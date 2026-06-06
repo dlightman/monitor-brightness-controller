@@ -1,0 +1,33 @@
+## .NET build artifacts
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Publish output
+publish/
+
+## NuGet
+packages/
+*.nupkg
+project.lock.json
+project.fragment.lock.json
+
+## Rider / VS / VS Code
+.idea/
+.vs/
+.vscode/
+*.DotSettings.user
+launchSettings.json
+
+## OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+## Kiro internal (keep specs but not config cache)
+.kiro/specs/*/.config.kiro
