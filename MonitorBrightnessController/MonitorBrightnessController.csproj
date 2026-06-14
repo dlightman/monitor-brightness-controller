@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>MonitorBrightnessController</RootNamespace>
+    <AssemblyName>MonitorBrightnessController</AssemblyName>
+
+    <!-- Use an explicit entry point (Program.Main) instead of the WPF auto-generated one.
+         Disabling the default ApplicationDefinition prevents a generated Main(), which would
+         otherwise collide with Program.Main (CS0017 multiple entry points). -->
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+    <StartupObject>MonitorBrightnessController.Program</StartupObject>
+
+    <!-- Build & distribution settings (Requirements 7.1, 7.2) -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+
+    <!-- Application icon (embedded in exe and used by Windows Explorer) -->
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+
+    <!-- Versioning (shown in file Properties → Details) -->
+    <Version>1.2.0</Version>
+    <AssemblyVersion>1.2.0.0</AssemblyVersion>
+    <FileVersion>1.2.0.0</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MonitorBrightnessController.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Make the icon available as a resource for the window and system tray -->
+    <Resource Include="Assets\app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="H.NotifyIcon.Wpf" Version="2.1.0" />
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+
+</Project>

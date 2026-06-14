@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Pre-Build Documentation Check",
+  "description": "Before running a dotnet publish or build command, reminds the agent to verify that README.md, in-app Help (PopulateHelp), and CHANGELOG.md have been updated for any new features or fixes included in this build.",
+  "version": "1",
+  "when": {
+    "type": "preToolUse",
+    "toolTypes": [
+      "shell"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "STOP — before running this build/publish command, verify:\n1. Have you updated README.md with any new features or changes?\n2. Have you updated the in-app Help tab (PopulateHelp() in MainWindow.xaml.cs)?\n3. Have you added a CHANGELOG.md entry for this version?\n4. Have you set the correct Version/AssemblyVersion/FileVersion in the .csproj?\n5. Is the output path set to ./builds/v{VERSION}/?\n\nIf ANY of these are not done, do them FIRST before proceeding with the build. If this is not a build/publish command, ignore this message and proceed."
+  }
+}
