@@ -13,14 +13,13 @@ Built with C# / .NET 8 / WPF. Distributed as a single executable.
 - **Named profiles** — save, apply, update, and delete brightness and gamma presets (e.g. "Gaming", "Working")
 - **Backward-compatible profiles** — existing brightness-only profiles continue to work without modification
 - **CLI mode** — set brightness, gamma, or apply profiles via command-line arguments (no GUI shown)
-- **Windows shortcut creation** — one-click shortcut generation for any saved profile
+- **Windows shortcut creation** — generate desktop shortcuts for any saved profile (Settings tab)
 - **System tray** — optional minimize-to-tray with double-click restore and context menu
 - **Smooth transitions** — optional animated brightness and gamma fade between values (independent per setting per monitor)
 - **Start with Windows** — optional auto-launch on login
 - **Startup registry self-healing** — autostart path auto-corrects if the exe is moved
-- **Default startup profile** — choose a profile to apply automatically on every GUI launch
+- **Unified startup profile** — choose "Last Used" or a specific profile to apply on every GUI launch
 - **Proper Install** — one-click copy to Program Files with UAC elevation
-- **Auto-apply on startup** — optionally restore your last-used profile at launch
 - **Refresh on focus** — re-reads hardware brightness and gamma when the window regains focus
 - **Single-file exe** — one portable file, runs from any location
 
@@ -141,8 +140,8 @@ All settings are in the **Settings** tab and saved automatically to:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Apply last-used profile on startup | Off | Restores your most recent profile when the app launches |
-| Default startup profile | None | Choose a specific profile to apply every launch (overrides auto-apply) |
+| Auto apply profile on start | Off | Applies a profile automatically when the app launches |
+| Startup profile | Last Used | Which profile to apply on startup ("Last Used" or a specific profile) |
 | Minimize to system tray | On | Hides to tray on minimize/close instead of taskbar |
 | Smooth transitions | Off | Fades brightness and gamma gradually instead of jumping |
 | Transition duration | 500ms | Duration of smooth transitions (100–2000ms) |
