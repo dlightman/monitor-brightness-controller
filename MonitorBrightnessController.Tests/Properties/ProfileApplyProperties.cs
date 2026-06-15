@@ -7,6 +7,7 @@ using FsCheck.Xunit;
 using MonitorBrightnessController.Application;
 using MonitorBrightnessController.Interfaces;
 using MonitorBrightnessController.Models;
+using MbcUnit = MonitorBrightnessController.Models.Unit;
 using NSubstitute;
 
 namespace MonitorBrightnessController.Tests.Properties;
@@ -34,7 +35,7 @@ public class ProfileApplyProperties
         {
             Profiles = new List<Profile> { profile }
         });
-        store.Save(Arg.Any<AppSettings>()).Returns(Result<Unit>.Success(Unit.Value));
+        store.Save(Arg.Any<AppSettings>()).Returns(Result<MbcUnit>.Success(MbcUnit.Value));
         return store;
     }
 
@@ -46,8 +47,8 @@ public class ProfileApplyProperties
     {
         var service = Substitute.For<IMonitorService>();
         service.DetectMonitors().Returns(connectedMonitors);
-        service.SetBrightness(Arg.Any<int>(), Arg.Any<int>()).Returns(Result<Unit>.Success(Unit.Value));
-        service.SetGamma(Arg.Any<int>(), Arg.Any<int>()).Returns(Result<Unit>.Success(Unit.Value));
+        service.SetBrightness(Arg.Any<int>(), Arg.Any<int>()).Returns(Result<MbcUnit>.Success(MbcUnit.Value));
+        service.SetGamma(Arg.Any<int>(), Arg.Any<int>()).Returns(Result<MbcUnit>.Success(MbcUnit.Value));
         return service;
     }
 
@@ -211,18 +212,18 @@ public class ProfileApplyProperties
                 if (data.FailFlags[i])
                 {
                     monitorService.SetBrightness(i + 1, Arg.Any<int>())
-                        .Returns(Result<Unit>.Failure($"Brightness failed on monitor {i + 1}"));
+                        .Returns(Result<MbcUnit>.Failure($"Brightness failed on monitor {i + 1}"));
                     expectedFailCount++;
                 }
                 else
                 {
                     monitorService.SetBrightness(i + 1, Arg.Any<int>())
-                        .Returns(Result<Unit>.Success(Unit.Value));
+                        .Returns(Result<MbcUnit>.Success(MbcUnit.Value));
                 }
 
                 // SetGamma always succeeds in this test
                 monitorService.SetGamma(i + 1, Arg.Any<int>())
-                    .Returns(Result<Unit>.Success(Unit.Value));
+                    .Returns(Result<MbcUnit>.Success(MbcUnit.Value));
             }
 
             var profileManager = new ProfileManager(settingsStore);
@@ -376,23 +377,23 @@ public class ProfileApplyProperties
                 if (data.BrightnessFailFlags[i])
                 {
                     monitorService.SetBrightness(i + 1, Arg.Any<int>())
-                        .Returns(Result<Unit>.Failure($"Brightness DDC/CI error on monitor {i + 1}"));
+                        .Returns(Result<MbcUnit>.Failure($"Brightness DDC/CI error on monitor {i + 1}"));
                 }
                 else
                 {
                     monitorService.SetBrightness(i + 1, Arg.Any<int>())
-                        .Returns(Result<Unit>.Success(Unit.Value));
+                        .Returns(Result<MbcUnit>.Success(MbcUnit.Value));
                 }
 
                 if (data.GammaFailFlags[i])
                 {
                     monitorService.SetGamma(i + 1, Arg.Any<int>())
-                        .Returns(Result<Unit>.Failure($"Gamma DDC/CI error on monitor {i + 1}"));
+                        .Returns(Result<MbcUnit>.Failure($"Gamma DDC/CI error on monitor {i + 1}"));
                 }
                 else
                 {
                     monitorService.SetGamma(i + 1, Arg.Any<int>())
-                        .Returns(Result<Unit>.Success(Unit.Value));
+                        .Returns(Result<MbcUnit>.Success(MbcUnit.Value));
                 }
             }
 

@@ -3,6 +3,7 @@ using FluentAssertions;
 using FsCheck;
 using FsCheck.Xunit;
 using MonitorBrightnessController.Models;
+using MbcUnit = MonitorBrightnessController.Models.Unit;
 using MonitorBrightnessController.Presentation;
 using Xunit;
 
@@ -44,7 +45,7 @@ public class BrightnessSyncTests
         };
 
         // Commit callback always succeeds so the view model retains committed values.
-        return new MonitorControlViewModel(state, (_, _) => Result<Unit>.Success(Unit.Value));
+        return new MonitorControlViewModel(state, (_, _) => Result<MbcUnit>.Success(MbcUnit.Value));
     }
 
     // Feature: monitor-brightness-controller, Property 4: Bidirectional Brightness Control Sync

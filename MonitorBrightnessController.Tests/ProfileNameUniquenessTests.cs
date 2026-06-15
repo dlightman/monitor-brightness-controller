@@ -8,6 +8,7 @@ using MonitorBrightnessController.Application;
 using MonitorBrightnessController.Interfaces;
 using MonitorBrightnessController.Models;
 using Xunit;
+using MbcUnit = MonitorBrightnessController.Models.Unit;
 
 namespace MonitorBrightnessController.Tests;
 
@@ -28,10 +29,10 @@ public sealed class InMemorySettingsStore_Uniqueness : ISettingsStore
 
     public AppSettings Load() => _settings;
 
-    public Result<Unit> Save(AppSettings settings)
+    public Result<MbcUnit> Save(AppSettings settings)
     {
         _settings = settings;
-        return Result<Unit>.Success(Unit.Value);
+        return Result<MbcUnit>.Success(MbcUnit.Value);
     }
 }
 
@@ -123,7 +124,7 @@ public class ProfileNameUniquenessTests
         var manager = new ProfileManager(store);
 
         // Attempt to create a new profile whose name is a case variant Q of P.
-        Result<Unit> result = manager.CreateProfile(input.Variant, SampleMap, null);
+        Result<MbcUnit> result = manager.CreateProfile(input.Variant, SampleMap, null);
 
         // Creation must be rejected as a duplicate, and the profile count must stay at 1.
         result.IsSuccess.Should().BeFalse(

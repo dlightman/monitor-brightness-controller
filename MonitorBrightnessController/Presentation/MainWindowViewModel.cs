@@ -1,6 +1,8 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Windows.Input;
 using MonitorBrightnessController.Application;
 using MonitorBrightnessController.Infrastructure;
@@ -41,7 +43,10 @@ public sealed class MainWindowViewModel : ViewModelBase
     private bool _isProperlyInstalled;
     private string? _installResultMessage;
     private string _selectedStartupProfile = "None";
+    private string _selectedStartupProfileName = "Last Used";
     private string? _startupProfileError;
+    private string? _selectedShortcutProfile;
+    private string? _shortcutStatusMessage;
 
     /// <summary>
     /// Creates the main window view model with only a monitor service. No startup auto-apply
@@ -52,7 +57,15 @@ public sealed class MainWindowViewModel : ViewModelBase
     public MainWindowViewModel(IMonitorService monitorService)
     {
         _monitorService = monitorService ?? throw new ArgumentNullException(nameof(monitorService));
+
+        var assembly = Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
+        var version = assembly.GetName().Version;
+        AppVersion = version is not null ? $"{version.Major}.{version.Minor}.{version.Build}" : "Unknown";
+        BuildDate = assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == "BuildDate")?.Value ?? "Unknown";
+
         ProperInstallCommand = new RelayCommand(ExecuteProperInstall, () => !IsProperlyInstalled);
+        CreateShortcutCommand = new RelayCommand(ExecuteCreateShortcut, () => CanCreateShortcut);
         Load();
     }
 
@@ -80,9 +93,16 @@ public sealed class MainWindowViewModel : ViewModelBase
         _startupRegistration = startupRegistration;
         _applicationInstaller = applicationInstaller;
 
+        var assembly = Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
+        var version = assembly.GetName().Version;
+        AppVersion = version is not null ? $"{version.Major}.{version.Minor}.{version.Build}" : "Unknown";
+        BuildDate = assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == "BuildDate")?.Value ?? "Unknown";
+
         // Determine install state (Req 4.1, 4.9)
         _isProperlyInstalled = _applicationInstaller?.IsInstalledInProgramFiles() ?? false;
         ProperInstallCommand = new RelayCommand(ExecuteProperInstall, () => !IsProperlyInstalled);
+        CreateShortcutCommand = new RelayCommand(ExecuteCreateShortcut, () => CanCreateShortcut);
 
         // Seed the toggles from persisted settings (defaults applied on first use).
         var loadedSettings = _settingsStore.Load();
@@ -95,17 +115,54 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         // Initialize the startup profile dropdown (Req 3.1, 3.2)
         _selectedStartupProfile = loadedSettings.DefaultStartupProfileName ?? "None";
+        // Initialize the new startup profile name (Req 6.5, 6.8)
+        _selectedStartupProfileName = loadedSettings.DefaultStartupProfileName ?? "Last Used";
         RefreshStartupProfileDropdown();
 
         // Perform startup auto-apply coordination before reading current values
         // (Requirements 5.3, 5.4, 5.6, 5.7). Any notice is surfaced in the GUI.
         var coordinator = new StartupCoordinator(_settingsStore, _profileManager, _monitorService, _startupRegistration);
+
+        // Determine the startup decision to know which profile (if any) was targeted
+        IReadOnlyList<string> profileNames = _profileManager.GetAllProfiles()
+            .Select(p => p.Name)
+            .ToList();
+        var decision = StartupCoordinator.Decide(loadedSettings, profileNames);
+
         _startupNotice = coordinator.Run();
 
         // Detect monitors so the UI shows current brightness values (read without modifying
         // when auto-apply is disabled or the last profile was missing).
         Load();
+
+        // Startup slider synchronization (Requirements 1.1, 1.2, 1.3, 1.4):
+        // - When no startup profile applies (Req 1.1): sliders already show hardware-reported
+        //   values from Load(). DDC/CI failures default to midpoint (50) in MonitorControlViewModel.
+        // - When startup profile was applied successfully (Req 1.2): preview the profile values
+        //   on mapped monitors. Unmapped monitors retain their hardware-reported values.
+        // - When startup profile application fails (Req 1.3): _startupNotice is non-null,
+        //   sliders fall back to hardware-reported values (already set by Load()).
+        bool profileAppliedSuccessfully = _startupNotice is null &&
+            (decision.Action == StartupAction.ApplyDefaultProfile ||
+             decision.Action == StartupAction.ApplyLastProfile);
+
+        if (profileAppliedSuccessfully && !string.IsNullOrEmpty(decision.ProfileName))
+        {
+            PreviewProfile(decision.ProfileName);
+        }
     }
+
+    /// <summary>
+    /// The application version in "Major.Minor.Patch" format, derived from the assembly version
+    /// at startup (Requirement 7.3, 7.5).
+    /// </summary>
+    public string AppVersion { get; }
+
+    /// <summary>
+    /// The build date in "yyyy-MM-dd" format, derived from the AssemblyMetadata attribute
+    /// at compile time (Requirement 7.4, 7.5).
+    /// </summary>
+    public string BuildDate { get; }
 
     /// <summary>The per-monitor control view models rendered by the GUI (Requirement 2.1).</summary>
     public ObservableCollection<MonitorControlViewModel> Monitors { get; } = new();
@@ -339,6 +396,127 @@ public sealed class MainWindowViewModel : ViewModelBase
     public ObservableCollection<string> AvailableProfilesForStartup { get; } = new();
 
     /// <summary>
+    /// The list of options for the Startup Profile dropdown on the Settings tab.
+    /// Contains "Last Used" as the first item followed by all saved profile names
+    /// in case-insensitive alphabetical order (Requirement 6.5).
+    /// </summary>
+    public ObservableCollection<string> StartupProfileOptions { get; } = new();
+
+    /// <summary>
+    /// The list of profile names available for the Create Shortcut dropdown on the Settings tab.
+    /// Contains all saved profile names in case-insensitive alphabetical order (no "Last Used").
+    /// (Requirement 5.2)
+    /// </summary>
+    public ObservableCollection<string> ShortcutProfileOptions { get; } = new();
+
+    /// <summary>
+    /// The profile selected in the Create Shortcut dropdown. Null by default (no selection).
+    /// When changed, updates <see cref="CanCreateShortcut"/> (Requirement 5.5).
+    /// </summary>
+    public string? SelectedShortcutProfile
+    {
+        get => _selectedShortcutProfile;
+        set
+        {
+            if (_selectedShortcutProfile == value)
+            {
+                return;
+            }
+
+            _selectedShortcutProfile = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CanCreateShortcut));
+            CreateShortcutCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    /// <summary>
+    /// True when a profile is selected in the Create Shortcut dropdown, enabling the button
+    /// (Requirement 5.5).
+    /// </summary>
+    public bool CanCreateShortcut => !string.IsNullOrEmpty(_selectedShortcutProfile);
+
+    /// <summary>
+    /// Command that triggers shortcut creation for the selected profile.
+    /// Enabled only when <see cref="CanCreateShortcut"/> is true (Requirement 5.5).
+    /// </summary>
+    public RelayCommand CreateShortcutCommand { get; }
+
+    /// <summary>
+    /// Status message displayed after a shortcut creation attempt. Shows success with the
+    /// file name on success (Requirement 5.6), or an error message on failure (Requirement 5.7).
+    /// Cleared on the next creation attempt.
+    /// </summary>
+    public string? ShortcutStatusMessage
+    {
+        get => _shortcutStatusMessage;
+        set
+        {
+            if (_shortcutStatusMessage == value)
+            {
+                return;
+            }
+
+            _shortcutStatusMessage = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasShortcutStatusMessage));
+        }
+    }
+
+    /// <summary>True when a shortcut status message is available for display.</summary>
+    public bool HasShortcutStatusMessage => !string.IsNullOrEmpty(_shortcutStatusMessage);
+
+    /// <summary>
+    /// Delegate for actual shortcut creation logic (COM interop with WScript.Shell).
+    /// Wired from code-behind. Accepts the profile name and returns a Result indicating
+    /// success or failure. When null, the command will set an error message.
+    /// </summary>
+    public Func<string, Result<Unit>>? CreateShortcutFunc { get; set; }
+
+    /// <summary>
+    /// The currently selected startup profile name for the unified Startup Profile section.
+    /// "Last Used" maps to <c>DefaultStartupProfileName = null</c>; a specific profile name
+    /// maps to <c>DefaultStartupProfileName = thatName</c>.
+    /// Persists the selection immediately on change (Requirement 6.8).
+    /// </summary>
+    public string SelectedStartupProfileName
+    {
+        get => _selectedStartupProfileName;
+        set
+        {
+            if (_selectedStartupProfileName == value)
+            {
+                return;
+            }
+
+            var previousValue = _selectedStartupProfileName;
+            _selectedStartupProfileName = value;
+            OnPropertyChanged();
+
+            // Map "Last Used" → null for persistence (Requirement 6.8)
+            var profileNameToSave = value == "Last Used" ? null : value;
+
+            if (_settingsStore is not null)
+            {
+                AppSettings settings = _settingsStore.Load();
+                var result = _settingsStore.Save(settings with { DefaultStartupProfileName = profileNameToSave });
+
+                if (!result.IsSuccess)
+                {
+                    // Revert on failure
+                    _selectedStartupProfileName = previousValue;
+                    OnPropertyChanged(nameof(SelectedStartupProfileName));
+                    StartupProfileError = result.Error ?? "Failed to save startup profile selection.";
+                }
+                else
+                {
+                    StartupProfileError = null;
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// The currently selected default startup profile. "None" means no profile is applied at startup.
     /// When changed, persists the selection immediately without a separate save action (Req 3.3, 3.4).
     /// On persist failure, reverts to the previous value and sets an error (Req 3.6).
@@ -404,14 +582,24 @@ public sealed class MainWindowViewModel : ViewModelBase
     public bool HasStartupProfileError => !string.IsNullOrEmpty(_startupProfileError);
 
     /// <summary>
-    /// Rebuilds <see cref="AvailableProfilesForStartup"/> from the current profiles in the settings store.
-    /// "None" is always the first entry, followed by profile names in store order (Req 3.1, 3.7).
-    /// If the current DefaultStartupProfileName no longer matches any profile, resets selection to "None" (Req 3.2, 3.5).
+    /// Rebuilds <see cref="AvailableProfilesForStartup"/>, <see cref="StartupProfileOptions"/>,
+    /// and <see cref="ShortcutProfileOptions"/> from the current profiles in the settings store.
+    /// For AvailableProfilesForStartup: "None" is first, followed by profile names in store order.
+    /// For StartupProfileOptions: "Last Used" is first, followed by profile names in case-insensitive
+    /// alphabetical order (Requirement 6.5).
+    /// For ShortcutProfileOptions: all profile names in case-insensitive alphabetical order (Requirement 5.2).
+    /// If the current DefaultStartupProfileName no longer matches any profile, resets selections
+    /// to their default values and persists the change (Requirements 3.5, 6.9).
     /// </summary>
     public void RefreshStartupProfileDropdown()
     {
         AvailableProfilesForStartup.Clear();
         AvailableProfilesForStartup.Add("None");
+
+        StartupProfileOptions.Clear();
+        StartupProfileOptions.Add("Last Used");
+
+        ShortcutProfileOptions.Clear();
 
         if (_settingsStore is not null)
         {
@@ -419,6 +607,18 @@ public sealed class MainWindowViewModel : ViewModelBase
             foreach (var profile in settings.Profiles)
             {
                 AvailableProfilesForStartup.Add(profile.Name);
+            }
+
+            // Add profile names in case-insensitive alphabetical order for StartupProfileOptions and ShortcutProfileOptions
+            var sortedNames = settings.Profiles
+                .Select(p => p.Name)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var name in sortedNames)
+            {
+                StartupProfileOptions.Add(name);
+                ShortcutProfileOptions.Add(name);
             }
 
             // Validate current selection still exists
@@ -429,13 +629,24 @@ public sealed class MainWindowViewModel : ViewModelBase
                 // Profile no longer exists — reset to "None" (Req 3.5)
                 _selectedStartupProfile = "None";
                 OnPropertyChanged(nameof(SelectedStartupProfile));
+
+                // Also reset SelectedStartupProfileName to "Last Used" (Req 6.9)
+                _selectedStartupProfileName = "Last Used";
+                OnPropertyChanged(nameof(SelectedStartupProfileName));
+            }
+
+            // If the selected shortcut profile no longer exists, clear it
+            if (_selectedShortcutProfile is not null &&
+                !settings.Profiles.Exists(p => string.Equals(p.Name, _selectedShortcutProfile, StringComparison.OrdinalIgnoreCase)))
+            {
+                SelectedShortcutProfile = null;
             }
         }
     }
 
     /// <summary>
     /// Called when a profile is deleted. If the deleted profile was the default startup profile,
-    /// clears the setting and updates the dropdown (Req 3.5).
+    /// clears the setting and updates the dropdowns (Requirements 3.5, 6.9).
     /// </summary>
     /// <param name="deletedProfileName">The name of the deleted profile.</param>
     public void NotifyProfileDeleted(string deletedProfileName)
@@ -448,10 +659,14 @@ public sealed class MainWindowViewModel : ViewModelBase
         var settings = _settingsStore.Load();
         if (string.Equals(settings.DefaultStartupProfileName, deletedProfileName, StringComparison.OrdinalIgnoreCase))
         {
-            // Clear the default since the profile no longer exists (Req 3.5)
+            // Clear the default since the profile no longer exists (Req 3.5, 6.9)
             _settingsStore.Save(settings with { DefaultStartupProfileName = null });
             _selectedStartupProfile = "None";
             OnPropertyChanged(nameof(SelectedStartupProfile));
+
+            // Reset SelectedStartupProfileName to "Last Used" and persist (Req 6.9)
+            _selectedStartupProfileName = "Last Used";
+            OnPropertyChanged(nameof(SelectedStartupProfileName));
         }
 
         RefreshStartupProfileDropdown();
@@ -461,6 +676,15 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// Called when a profile is created. Refreshes the dropdown list (Req 3.7).
     /// </summary>
     public void NotifyProfileCreated()
+    {
+        RefreshStartupProfileDropdown();
+    }
+
+    /// <summary>
+    /// Refreshes all profile-related dropdowns after a profile create or delete operation.
+    /// This is a convenience method that ensures all dropdown collections stay consistent.
+    /// </summary>
+    public void RefreshAllProfileDropdowns()
     {
         RefreshStartupProfileDropdown();
     }
@@ -512,6 +736,111 @@ public sealed class MainWindowViewModel : ViewModelBase
             {
                 vm.Gamma = gammaResult.Value;
             }
+        }
+    }
+
+    /// <summary>
+    /// Restores each monitor's sliders to the current hardware-reported brightness and gamma values.
+    /// Called when the profile dropdown selection is cleared (deselected). For monitors where the
+    /// hardware read succeeds, the slider is updated to the hardware value. For monitors where the
+    /// read fails, the last displayed value is retained.
+    /// </summary>
+    /// <remarks>Requirements 2.4, 2.5</remarks>
+    public void RestoreHardwareValues()
+    {
+        foreach (var monitor in Monitors)
+        {
+            var brightnessResult = _monitorService.GetBrightness(monitor.MonitorIndex);
+            if (brightnessResult.IsSuccess)
+            {
+                monitor.Brightness = brightnessResult.Value;
+            }
+
+            var gammaResult = _monitorService.GetGamma(monitor.MonitorIndex);
+            if (gammaResult.IsSuccess)
+            {
+                monitor.Gamma = gammaResult.Value;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Previews a profile's brightness and gamma values on the monitor sliders without applying
+    /// to hardware. For each monitor present in the profile's maps, the corresponding slider is
+    /// updated; monitors not in the maps retain their current displayed values.
+    /// Legacy profiles (null MonitorGammaMap) leave gamma sliders unchanged.
+    /// </summary>
+    /// <param name="profileName">
+    /// The name of the profile to preview. If null or empty, the method returns immediately
+    /// (deselection is handled by <see cref="RestoreHardwareValues"/>).
+    /// </param>
+    /// <remarks>Requirements 2.1, 2.2, 2.3</remarks>
+    public void PreviewProfile(string? profileName)
+    {
+        if (string.IsNullOrEmpty(profileName))
+        {
+            return;
+        }
+
+        if (_profileManager is null)
+        {
+            return;
+        }
+
+        var profileResult = _profileManager.GetProfile(profileName);
+        if (!profileResult.IsSuccess)
+        {
+            return;
+        }
+
+        var profile = profileResult.Value;
+
+        foreach (var monitor in Monitors)
+        {
+            // Update brightness if the profile maps this monitor
+            if (profile.MonitorBrightnessMap.TryGetValue(monitor.DevicePath, out int brightness))
+            {
+                monitor.Brightness = brightness;
+            }
+
+            // Update gamma if the profile has a gamma map and maps this monitor
+            if (profile.MonitorGammaMap is not null &&
+                profile.MonitorGammaMap.TryGetValue(monitor.DevicePath, out int gamma))
+            {
+                monitor.Gamma = gamma;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Executes the shortcut creation flow by invoking <see cref="CreateShortcutFunc"/>.
+    /// Clears the previous status message before attempting creation.
+    /// On success, sets <see cref="ShortcutStatusMessage"/> to indicate the created file.
+    /// On failure, sets <see cref="ShortcutStatusMessage"/> to the error message.
+    /// </summary>
+    private void ExecuteCreateShortcut()
+    {
+        ShortcutStatusMessage = null;
+
+        if (string.IsNullOrEmpty(_selectedShortcutProfile))
+        {
+            return;
+        }
+
+        if (CreateShortcutFunc is null)
+        {
+            ShortcutStatusMessage = "Shortcut creation is not available.";
+            return;
+        }
+
+        var result = CreateShortcutFunc(_selectedShortcutProfile);
+        if (result.IsSuccess)
+        {
+            ShortcutStatusMessage = $"Shortcut created: Brightness - {_selectedShortcutProfile}.lnk";
+        }
+        else
+        {
+            ShortcutStatusMessage = result.Error ?? "Failed to create shortcut.";
         }
     }
 

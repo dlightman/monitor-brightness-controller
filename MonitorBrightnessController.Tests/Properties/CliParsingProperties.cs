@@ -8,6 +8,7 @@ using FsCheck.Xunit;
 using MonitorBrightnessController.Application;
 using MonitorBrightnessController.Interfaces;
 using MonitorBrightnessController.Models;
+using MbcUnit = MonitorBrightnessController.Models.Unit;
 using NSubstitute;
 
 namespace MonitorBrightnessController.Tests.Properties;
@@ -156,7 +157,7 @@ public class CliParsingProperties
 
         monitorService.DetectMonitors().Returns(new List<MonitorState> { monitor });
         monitorService.FindMonitor("1").Returns(monitor);
-        monitorService.SetGamma(1, gammaValue).Returns(Result<Unit>.Success(Unit.Value));
+        monitorService.SetGamma(1, gammaValue).Returns(Result<MbcUnit>.Success(MbcUnit.Value));
 
         var stderr = new StringWriter();
         var handler = new CliHandler(monitorService, profileManager, TextWriter.Null, stderr);
@@ -198,7 +199,7 @@ public class CliParsingProperties
 
         monitorService.DetectMonitors().Returns(new List<MonitorState> { monitor });
         monitorService.FindMonitor("1").Returns(monitor);
-        monitorService.SetBrightness(1, brightnessValue).Returns(Result<Unit>.Success(Unit.Value));
+        monitorService.SetBrightness(1, brightnessValue).Returns(Result<MbcUnit>.Success(MbcUnit.Value));
 
         var stderr = new StringWriter();
         var handler = new CliHandler(monitorService, profileManager, TextWriter.Null, stderr);
@@ -260,8 +261,8 @@ public class CliParsingProperties
         monitorService.FindMonitor("nonexistent").Returns((MonitorState?)null);
         monitorService.FindMonitor("2").Returns(monitor2);
 
-        monitorService.SetGamma(1, gammaValue).Returns(Result<Unit>.Success(Unit.Value));
-        monitorService.SetGamma(2, gammaValue).Returns(Result<Unit>.Success(Unit.Value));
+        monitorService.SetGamma(1, gammaValue).Returns(Result<MbcUnit>.Success(MbcUnit.Value));
+        monitorService.SetGamma(2, gammaValue).Returns(Result<MbcUnit>.Success(MbcUnit.Value));
 
         var stderr = new StringWriter();
         var handler = new CliHandler(monitorService, profileManager, TextWriter.Null, stderr);

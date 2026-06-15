@@ -7,6 +7,7 @@ using MonitorBrightnessController.Application;
 using MonitorBrightnessController.Interfaces;
 using MonitorBrightnessController.Models;
 using Xunit;
+using MbcUnit = MonitorBrightnessController.Models.Unit;
 
 namespace MonitorBrightnessController.Tests;
 
@@ -27,10 +28,10 @@ internal sealed class InMemorySettingsStore_CountLimit : ISettingsStore
 
     public AppSettings Load() => _settings;
 
-    public Result<Unit> Save(AppSettings settings)
+    public Result<MbcUnit> Save(AppSettings settings)
     {
         _settings = settings;
-        return Result<Unit>.Success(Unit.Value);
+        return Result<MbcUnit>.Success(MbcUnit.Value);
     }
 }
 
@@ -101,7 +102,7 @@ public class ProfileCountLimitTests
 
         manager.GetAllProfiles().Should().HaveCount(ProfileManager.MaxProfiles);
 
-        Result<Unit> result = manager.CreateProfile(
+        Result<MbcUnit> result = manager.CreateProfile(
             newName,
             new Dictionary<string, int> { ["\\\\?\\DISPLAY#NEW#1&xyz"] = 50 },
             null);
@@ -117,7 +118,7 @@ public class ProfileCountLimitTests
         var store = new InMemorySettingsStore_CountLimit(BuildFullSettings("focus"));
         var manager = new ProfileManager(store);
 
-        Result<Unit> result = manager.CreateProfile(
+        Result<MbcUnit> result = manager.CreateProfile(
             "focus",
             new Dictionary<string, int> { ["\\\\?\\DISPLAY#DEL41AB#5&abc"] = 40 },
             null);

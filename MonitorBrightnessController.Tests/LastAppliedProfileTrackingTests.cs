@@ -8,6 +8,7 @@ using MonitorBrightnessController.Interfaces;
 using MonitorBrightnessController.Models;
 using NSubstitute;
 using Xunit;
+using MbcUnit = MonitorBrightnessController.Models.Unit;
 
 namespace MonitorBrightnessController.Tests;
 
@@ -30,10 +31,10 @@ public sealed class InMemorySettingsStore_LastApplied : ISettingsStore
 
     public AppSettings Load() => Current;
 
-    public Result<Unit> Save(AppSettings settings)
+    public Result<MbcUnit> Save(AppSettings settings)
     {
         Current = settings;
-        return Result<Unit>.Success(Unit.Value);
+        return Result<MbcUnit>.Success(MbcUnit.Value);
     }
 }
 
@@ -118,11 +119,11 @@ public class LastAppliedProfileTrackingTests
             },
         });
         monitorService.SetBrightness(Arg.Any<int>(), Arg.Any<int>())
-            .Returns(Result<Unit>.Success(Unit.Value));
+            .Returns(Result<MbcUnit>.Success(MbcUnit.Value));
 
         var manager = new ProfileManager(store);
 
-        Result<Unit> result = manager.ApplyProfile(profileName, monitorService);
+        Result<MbcUnit> result = manager.ApplyProfile(profileName, monitorService);
 
         result.IsSuccess.Should().BeTrue(
             "applying a profile with one connected mapped monitor should succeed");
@@ -160,12 +161,12 @@ public class LastAppliedProfileTrackingTests
             },
         });
         monitorService.SetBrightness(Arg.Any<int>(), Arg.Any<int>())
-            .Returns(Result<Unit>.Success(Unit.Value));
+            .Returns(Result<MbcUnit>.Success(MbcUnit.Value));
 
         var manager = new ProfileManager(store);
 
         // Apply using a case-variant name to confirm the stored profile's canonical name is recorded.
-        Result<Unit> result = manager.ApplyProfile("FOCUS", monitorService);
+        Result<MbcUnit> result = manager.ApplyProfile("FOCUS", monitorService);
 
         result.IsSuccess.Should().BeTrue();
         store.Current.LastAppliedProfileName.Should().Be("focus");

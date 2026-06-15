@@ -1,18 +1,21 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq;
+using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
-using System.Windows.Documents;
+using System.Windows.Navigation;
 using Microsoft.Win32;
 using MonitorBrightnessController.Application;
 using MonitorBrightnessController.Infrastructure;
 using MonitorBrightnessController.Interfaces;
+using MonitorBrightnessController.Models;
 
 namespace MonitorBrightnessController.Presentation;
 
 /// <summary>
-/// Interaction logic for MainWindow.xaml. Hosts monitors, profiles, settings, and help.
+/// Interaction logic for MainWindow.xaml. Hosts monitors, settings, and about tabs.
 /// Manages system tray lifecycle based on the MinimizeToTray setting.
 /// </summary>
 public partial class MainWindow : Window
@@ -52,8 +55,10 @@ public partial class MainWindow : Window
         _viewModel = new MainWindowViewModel(monitorService, settingsStore, profileManager, startupRegistration, applicationInstaller);
         DataContext = _viewModel;
 
-        WireProfilePanel(profileManager, monitorService);
-        PopulateHelp();
+        // Wire shortcut creation delegate (Requirements 5.3, 5.4, 5.6, 5.7)
+        _viewModel.CreateShortcutFunc = CreateShortcutForProfile;
+
+        WireProfileStrip(profileManager, monitorService);
 
         // Initialize system tray based on the current setting
         if (_viewModel.MinimizeToTray)
@@ -107,104 +112,164 @@ public partial class MainWindow : Window
         _trayManager = null;
     }
 
-    private void WireProfilePanel(IProfileManager profileManager, IMonitorService monitorService)
+    private void WireProfileStrip(IProfileManager profileManager, IMonitorService monitorService)
     {
-        IReadOnlyDictionary<string, int> CaptureBrightnessMap()
-        {
-            var detected = monitorService.DetectMonitors();
-            return detected
-                .Where(m => m.IsControllable && m.CurrentBrightness.HasValue)
-                .ToDictionary(m => m.DevicePath, m => m.CurrentBrightness!.Value);
-        }
+        var profileStripViewModel = new ProfileStripViewModel(profileManager, monitorService);
 
-        var profilePanel = new ProfilePanel();
-        profilePanel.Initialize(profileManager, monitorService);
-        profilePanel.DataContext = new ProfilePanelViewModel(profileManager, CaptureBrightnessMap, monitorService);
-        ProfilePanelHost.Content = profilePanel;
+        // Wire slider preview callback to MainWindowViewModel (Requirements 2.1, 2.4, 3.4)
+        // Handle both profile selection (preview) and deselection (restore hardware values)
+        profileStripViewModel.OnProfileSelected = profileName =>
+        {
+            if (profileName is null)
+                _viewModel!.RestoreHardwareValues();
+            else
+                _viewModel!.PreviewProfile(profileName);
+        };
+
+        // Wire capture functions to read current slider values from monitor VMs (Requirements 3.6, 3.12)
+        profileStripViewModel.CaptureBrightnessMap = () =>
+        {
+            var map = new Dictionary<string, int>();
+            foreach (var monitorVm in _viewModel!.Monitors)
+            {
+                map[monitorVm.DevicePath] = monitorVm.Brightness;
+            }
+            return map;
+        };
+
+        profileStripViewModel.CaptureGammaMap = () =>
+        {
+            var map = new Dictionary<string, int>();
+            foreach (var monitorVm in _viewModel!.Monitors)
+            {
+                map[monitorVm.DevicePath] = monitorVm.Gamma;
+            }
+            return map;
+        };
+
+        // Wire profile change notification to refresh all dropdowns (Requirements 3.8, 3.12)
+        profileStripViewModel.OnProfilesChanged = () =>
+        {
+            _viewModel!.RefreshAllProfileDropdowns();
+        };
+
+        ProfileStripControl.DataContext = profileStripViewModel;
     }
 
-    private void PopulateHelp()
+    /// <summary>
+    /// Opens the hyperlink URI in the user's default web browser (Requirement 7.2).
+    /// </summary>
+    private void Hyperlink_RequestNavigate(object sender, RequestNavigateEventArgs e)
     {
-        HelpContent.Inlines.Clear();
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = e.Uri.AbsoluteUri,
+            UseShellExecute = true
+        });
+        e.Handled = true;
+    }
 
-        HelpContent.Inlines.Add(new Bold(new Run("Monitor Brightness Controller\n")) { FontSize = 16 });
-        HelpContent.Inlines.Add(new Run("\n"));
+    /// <summary>
+    /// Creates a Windows shortcut (.lnk) for the given profile using WScript.Shell COM.
+    /// Shows a SaveFileDialog defaulting to the Desktop with the filename
+    /// "Brightness - {profileName}.lnk". On success returns Result.Success; on failure
+    /// cleans up any partial file and returns Result.Failure with the error description.
+    /// (Requirements 5.3, 5.4, 5.6, 5.7)
+    /// </summary>
+    private Result<Unit> CreateShortcutForProfile(string profileName)
+    {
+        // Present save-file dialog defaulting to Desktop (Requirement 5.3)
+        var dialog = new SaveFileDialog
+        {
+            Title = "Save Profile Shortcut",
+            Filter = "Shortcut (*.lnk)|*.lnk",
+            FileName = $"Brightness - {profileName}.lnk",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+        };
 
-        HelpContent.Inlines.Add(new Bold(new Run("GUI Usage\n")));
-        HelpContent.Inlines.Add(new Run(
-            "• The Monitors tab shows one control group per detected DDC/CI monitor\n" +
-            "• Each monitor has a Brightness slider (0–100) and a Gamma slider (0–100)\n" +
-            "• Drag the slider or type a value in the text box and press Enter\n" +
-            "• Changes are applied immediately to the monitor via DDC/CI\n" +
-            "• Gamma controls VCP code 0x12 (Video Gain) — if your monitor does not\n" +
-            "  support this code, the gamma slider will be disabled\n\n"));
+        if (dialog.ShowDialog(this) != true)
+        {
+            // User cancelled — no-op, return success so VM doesn't show an error
+            return Result<Unit>.Success(Unit.Value);
+        }
 
-        HelpContent.Inlines.Add(new Bold(new Run("Profiles\n")));
-        HelpContent.Inlines.Add(new Run(
-            "• Go to the Profiles tab to create, apply, edit, and delete profiles\n" +
-            "• Creating a profile saves both brightness and gamma for all connected monitors\n" +
-            "• Apply restores brightness and gamma levels to connected monitors\n" +
-            "• Update overwrites the selected profile with current brightness and gamma levels\n" +
-            "• Create Shortcut makes a Windows .lnk for one-click/hotkey profile apply\n" +
-            "• Profile names: 1–64 characters, letters/digits/hyphens/underscores only\n" +
-            "• Legacy profiles (created before gamma support) still work — only brightness is applied\n\n"));
+        string shortcutPath = dialog.FileName;
 
-        HelpContent.Inlines.Add(new Bold(new Run("CLI Mode (for keyboard shortcuts)\n")));
-        HelpContent.Inlines.Add(new Run(
-            "Set brightness and/or gamma directly:\n" +
-            "  MonitorBrightnessController.exe --monitor 1 --brightness 70\n" +
-            "  MonitorBrightnessController.exe --monitor 1 --gamma 50\n" +
-            "  MonitorBrightnessController.exe --monitor 1 --brightness 70 --gamma 50\n" +
-            "  MonitorBrightnessController.exe --monitor 1 --brightness 100 --monitor 2 --brightness 50\n\n" +
-            "Apply a saved profile (restores both brightness and gamma):\n" +
-            "  MonitorBrightnessController.exe --profile focus\n\n" +
-            "Both --brightness and --gamma are optional within a --monitor group,\n" +
-            "but at least one must be specified.\n\n" +
-            "Monitor identifier: use index (1, 2, 3) or name (case-insensitive)\n\n"));
+        try
+        {
+            string exePath = GetExePath();
+            string arguments = $"--profile {profileName}";
+            string workingDirectory = Path.GetDirectoryName(exePath) ?? "";
 
-        HelpContent.Inlines.Add(new Bold(new Run("Creating Windows Keyboard Shortcuts\n")));
-        HelpContent.Inlines.Add(new Run(
-            "The easiest way: select a profile in the Profiles tab and click Create Shortcut.\n" +
-            "Then right-click the shortcut → Properties → Shortcut key → assign a hotkey.\n\n" +
-            "Manual method:\n" +
-            "1. Right-click desktop → New → Shortcut\n" +
-            "2. Set Target to the exe path followed by arguments:\n" +
-            "   C:\\path\\to\\MonitorBrightnessController.exe --profile focus\n" +
-            "3. Right-click shortcut → Properties → Shortcut key → assign a hotkey\n\n"));
+            CreateWindowsShortcut(shortcutPath, exePath, arguments, workingDirectory);
 
-        HelpContent.Inlines.Add(new Bold(new Run("Settings\n")));
-        HelpContent.Inlines.Add(new Run(
-            "• Auto-apply on startup: restores your last-used profile when the app starts\n" +
-            "• Default startup profile: choose a specific profile to apply every launch\n" +
-            "  (overrides auto-apply; skipped when launched with --monitor or --profile args)\n" +
-            "• Minimize to tray: hides to system tray on minimize/close (disable to use taskbar)\n" +
-            "• Smooth transitions: animates brightness and gamma changes over a configurable duration\n" +
-            "• Transitions run independently per monitor and per setting (brightness/gamma)\n" +
-            "• Start with Windows: auto-launches the app on login; the registry entry\n" +
-            "  auto-heals if the exe is moved or installed to a new location\n" +
-            "• Proper Install: copies the app to Program Files for a standard install location;\n" +
-            "  updates the autostart registry entry automatically\n" +
-            "• Settings are saved at %LOCALAPPDATA%\\MonitorBrightnessController\\settings.json\n\n"));
+            return Result<Unit>.Success(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            // Ensure no partial file left (Requirement 5.7)
+            try
+            {
+                if (File.Exists(shortcutPath))
+                {
+                    File.Delete(shortcutPath);
+                }
+            }
+            catch
+            {
+                // Best-effort cleanup; don't mask the original error
+            }
 
-        HelpContent.Inlines.Add(new Bold(new Run("System Tray (when enabled)\n")));
-        HelpContent.Inlines.Add(new Run(
-            "• Minimize or close → hides to system tray\n" +
-            "• Double-click tray icon → restore window\n" +
-            "• Right-click tray icon → Restore or Exit\n" +
-            "• Exit saves settings and terminates\n\n"));
+            return Result<Unit>.Failure($"Failed to create shortcut: {ex.Message}");
+        }
+    }
 
-        HelpContent.Inlines.Add(new Bold(new Run("Troubleshooting\n")));
-        HelpContent.Inlines.Add(new Run(
-            "• No monitors detected? Enable DDC/CI in your monitor's OSD settings menu\n" +
-            "• Laptop built-in displays do not support DDC/CI (external only)\n" +
-            "• Gamma slider disabled? Your monitor may not support VCP code 0x12\n" +
-            "• CLI shortcut not working? Ensure arguments are not wrapped in one quoted string\n" +
-            "• Test from cmd first: MonitorBrightnessController.exe --monitor 1 --brightness 50\n\n"));
+    /// <summary>
+    /// Gets the path to the running application executable.
+    /// </summary>
+    private static string GetExePath()
+    {
+        string? processPath = Environment.ProcessPath;
+        if (!string.IsNullOrEmpty(processPath))
+        {
+            return processPath;
+        }
 
-        HelpContent.Inlines.Add(new Bold(new Run("Prerequisites\n")));
-        HelpContent.Inlines.Add(new Run(
-            "• Windows 11\n" +
-            "• .NET 8 Runtime (x64)\n" +
-            "• External monitors with DDC/CI enabled\n"));
+        // Fallback
+        return Path.Combine(AppContext.BaseDirectory, "MonitorBrightnessController.exe");
+    }
+
+    /// <summary>
+    /// Creates a Windows .lnk shortcut file using COM WScript.Shell.
+    /// Sets TargetPath, Arguments, and WorkingDirectory per Requirements 5.4.
+    /// </summary>
+    private static void CreateWindowsShortcut(string shortcutPath, string targetPath, string arguments, string workingDirectory)
+    {
+        var shellType = Type.GetTypeFromProgID("WScript.Shell");
+        if (shellType is null)
+        {
+            throw new InvalidOperationException("WScript.Shell COM object is not available on this system.");
+        }
+
+        dynamic shell = Activator.CreateInstance(shellType)!;
+        try
+        {
+            dynamic shortcut = shell.CreateShortcut(shortcutPath);
+            try
+            {
+                shortcut.TargetPath = targetPath;
+                shortcut.Arguments = arguments;
+                shortcut.WorkingDirectory = workingDirectory;
+                shortcut.Save();
+            }
+            finally
+            {
+                Marshal.FinalReleaseComObject(shortcut);
+            }
+        }
+        finally
+        {
+            Marshal.FinalReleaseComObject(shell);
+        }
     }
 }

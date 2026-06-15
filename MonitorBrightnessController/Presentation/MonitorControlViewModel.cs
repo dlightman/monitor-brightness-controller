@@ -77,20 +77,26 @@ public sealed class MonitorControlViewModel : ViewModelBase
 
         MonitorIndex = state.MonitorIndex;
         MonitorName = state.MonitorName;
+        DevicePath = state.DevicePath;
 
         // A monitor is only controllable from the UI when it supports DDC/CI and we were
         // able to read a current brightness value. A failed read leaves brightness unknown
         // and the controls disabled (Requirement 1.4).
         IsControllable = state.IsControllable && state.CurrentBrightness.HasValue;
 
-        int initial = state.CurrentBrightness ?? 0;
+        // Requirement 1.4: DDC/CI read failure defaults slider to midpoint (50)
+        int initial = state.CurrentBrightness ?? 50;
         _brightness = initial;
         _lastKnownGood = initial;
         _brightnessText = IsControllable ? BrightnessSync.ToText(initial) : "unknown";
-        _errorMessage = state.ErrorMessage;
+
+        // Show error indicator when DDC/CI read failed (Requirement 1.4)
+        HasDdcReadError = !state.CurrentBrightness.HasValue && state.IsControllable;
+        _errorMessage = state.ErrorMessage ?? (HasDdcReadError ? "DDC/CI read failed" : null);
 
         // Seed gamma from detected state
-        int initialGamma = state.CurrentGamma ?? 0;
+        // Requirement 1.4: DDC/CI read failure defaults gamma slider to midpoint (50)
+        int initialGamma = state.CurrentGamma ?? 50;
         _gamma = initialGamma;
         _lastKnownGoodGamma = initialGamma;
         _gammaText = IsControllable && state.CurrentGamma.HasValue
@@ -111,11 +117,21 @@ public sealed class MonitorControlViewModel : ViewModelBase
     /// <summary>The resolved monitor display name.</summary>
     public string MonitorName { get; }
 
+    /// <summary>The Windows device path used for profile mapping.</summary>
+    public string DevicePath { get; }
+
     /// <summary>Label combining the index and name, e.g. "1: DELL U2723QE".</summary>
     public string Label => $"{MonitorIndex}: {MonitorName}";
 
     /// <summary>True when the slider and text input should be enabled.</summary>
     public bool IsControllable { get; }
+
+    /// <summary>
+    /// True when the initial DDC/CI hardware read failed for this monitor during startup
+    /// synchronization. When true, sliders default to midpoint (50) and an error indicator
+    /// is shown on the monitor's panel (Requirement 1.4).
+    /// </summary>
+    public bool HasDdcReadError { get; }
 
     /// <summary>
     /// The current brightness value bound to the slider. Setting this (e.g. by dragging the

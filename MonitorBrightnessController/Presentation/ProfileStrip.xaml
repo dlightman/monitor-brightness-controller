@@ -1,0 +1,48 @@
+<UserControl x:Class="MonitorBrightnessController.Presentation.ProfileStrip"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignWidth="520">
+    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+        <!-- Profile dropdown -->
+        <ComboBox ItemsSource="{Binding ProfileNames}"
+                  SelectedItem="{Binding SelectedProfileName, Mode=TwoWay}"
+                  Width="180"
+                  VerticalAlignment="Center" />
+
+        <!-- Apply button -->
+        <Button Content="Apply"
+                Margin="8,0,0,0"
+                Padding="12,4"
+                IsEnabled="{Binding CanApply}"
+                Command="{Binding ApplyCommand}"
+                ToolTip="Apply the selected profile to all monitors" />
+
+        <!-- Update button -->
+        <Button Content="Update"
+                Margin="8,0,0,0"
+                Padding="12,4"
+                IsEnabled="{Binding CanUpdate}"
+                Command="{Binding UpdateCommand}"
+                ToolTip="Save current brightness levels into the selected profile" />
+
+        <!-- Delete button (Click handled in code-behind for confirmation dialog) -->
+        <Button x:Name="DeleteButton"
+                Content="Delete"
+                Margin="8,0,0,0"
+                Padding="12,4"
+                IsEnabled="{Binding CanDelete}"
+                Click="DeleteButton_Click"
+                ToolTip="Delete the selected profile" />
+
+        <!-- Save As New button (Click handled in code-behind for input dialog) -->
+        <Button x:Name="SaveAsNewButton"
+                Content="Save As New"
+                Margin="8,0,0,0"
+                Padding="12,4"
+                Click="SaveAsNewButton_Click"
+                ToolTip="Save current values as a new profile" />
+    </StackPanel>
+</UserControl>

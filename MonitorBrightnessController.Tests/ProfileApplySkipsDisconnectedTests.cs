@@ -8,6 +8,7 @@ using MonitorBrightnessController.Application;
 using MonitorBrightnessController.Interfaces;
 using MonitorBrightnessController.Models;
 using Xunit;
+using MbcUnit = MonitorBrightnessController.Models.Unit;
 
 namespace MonitorBrightnessController.Tests;
 
@@ -37,10 +38,10 @@ internal sealed class InMemorySettingsStore_ApplySkip : ISettingsStore
 
     public AppSettings Load() => _settings;
 
-    public Result<Unit> Save(AppSettings settings)
+    public Result<MbcUnit> Save(AppSettings settings)
     {
         _settings = settings;
-        return Result<Unit>.Success(Unit.Value);
+        return Result<MbcUnit>.Success(MbcUnit.Value);
     }
 }
 
@@ -61,17 +62,17 @@ internal sealed class RecordingMonitorService_ApplySkip : IMonitorService
 
     public IReadOnlyList<MonitorState> DetectMonitors() => _connected;
 
-    public Result<Unit> SetBrightness(int monitorIndex, int brightnessValue)
+    public Result<MbcUnit> SetBrightness(int monitorIndex, int brightnessValue)
     {
         SetBrightnessCalls.Add((monitorIndex, brightnessValue));
-        return Result<Unit>.Success(Unit.Value);
+        return Result<MbcUnit>.Success(MbcUnit.Value);
     }
 
     public Result<int> GetBrightness(int monitorIndex) =>
         throw new NotSupportedException("Not exercised by Property 11.");
 
-    public Result<Unit> SetGamma(int monitorIndex, int gammaValue) =>
-        Result<Unit>.Success(Unit.Value);
+    public Result<MbcUnit> SetGamma(int monitorIndex, int gammaValue) =>
+        Result<MbcUnit>.Success(MbcUnit.Value);
 
     public Result<int> GetGamma(int monitorIndex) =>
         throw new NotSupportedException("Not exercised by Property 11.");
@@ -166,7 +167,7 @@ public class ProfileApplySkipsDisconnectedTests
         var monitorService = new RecordingMonitorService_ApplySkip(connectedStates);
 
         var manager = new ProfileManager(store);
-        Result<Unit> result = manager.ApplyProfile(profileName, monitorService);
+        Result<MbcUnit> result = manager.ApplyProfile(profileName, monitorService);
 
         // Expected: brightness set exactly once per connected monitor, with its mapped value.
         var expectedCalls = connectedStates
@@ -209,7 +210,7 @@ public class ProfileApplySkipsDisconnectedTests
         var monitorService = new RecordingMonitorService_ApplySkip(connectedStates);
 
         var manager = new ProfileManager(store);
-        Result<Unit> result = manager.ApplyProfile(profileName, monitorService);
+        Result<MbcUnit> result = manager.ApplyProfile(profileName, monitorService);
 
         result.IsSuccess.Should().BeTrue();
         monitorService.SetBrightnessCalls.Should().BeEquivalentTo(new[]
@@ -241,7 +242,7 @@ public class ProfileApplySkipsDisconnectedTests
         var monitorService = new RecordingMonitorService_ApplySkip(new List<MonitorState>());
 
         var manager = new ProfileManager(store);
-        Result<Unit> result = manager.ApplyProfile(profileName, monitorService);
+        Result<MbcUnit> result = manager.ApplyProfile(profileName, monitorService);
 
         result.IsSuccess.Should().BeFalse();
         monitorService.SetBrightnessCalls.Should().BeEmpty();

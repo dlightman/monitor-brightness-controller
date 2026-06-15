@@ -7,6 +7,7 @@ using FsCheck;
 using FsCheck.Xunit;
 using MonitorBrightnessController.Application;
 using MonitorBrightnessController.Models;
+using MbcUnit = MonitorBrightnessController.Models.Unit;
 
 namespace MonitorBrightnessController.Tests.Properties;
 
@@ -72,10 +73,10 @@ public class TransitionProperties
         var runner = new TransitionRunner();
         var appliedValues = new List<int>();
 
-        Func<int, Result<Unit>> applyStep = value =>
+        Func<int, Result<MbcUnit>> applyStep = value =>
         {
             appliedValues.Add(value);
-            return Result<Unit>.Success(Unit.Value);
+            return Result<MbcUnit>.Success(MbcUnit.Value);
         };
 
         var result = runner.RunTransitionAsync(
@@ -119,7 +120,7 @@ public class TransitionProperties
         var cts = new CancellationTokenSource();
         int stepCount = 0;
 
-        Func<int, Result<Unit>> applyStep = value =>
+        Func<int, Result<MbcUnit>> applyStep = value =>
         {
             appliedValues.Add(value);
             stepCount++;
@@ -130,7 +131,7 @@ public class TransitionProperties
                 cts.Cancel();
             }
 
-            return Result<Unit>.Success(Unit.Value);
+            return Result<MbcUnit>.Success(MbcUnit.Value);
         };
 
         // Use a duration that generates enough steps for cancellation to be meaningful

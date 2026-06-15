@@ -15,7 +15,7 @@ public enum StartupAction
     /// <summary>Auto-apply is disabled: read current brightness values without changing them (Requirement 5.4).</summary>
     AutoApplyDisabled,
 
-    /// <summary>Auto-apply is enabled and the last-applied profile still exists: apply it (Requirement 5.3).</summary>
+    /// <summary>Auto-apply is enabled and the last-applied profile still exists: apply it (Requirements 5.3, 6.6).</summary>
     ApplyLastProfile,
 
     /// <summary>Auto-apply is enabled but the last-applied profile is missing: skip and notify (Requirement 5.6).</summary>
@@ -24,10 +24,10 @@ public enum StartupAction
     /// <summary>CLI arguments override startup profile: skip all auto-apply (Requirement 2.5).</summary>
     CliOverride,
 
-    /// <summary>Apply the configured default startup profile (Requirement 2.4).</summary>
+    /// <summary>Apply the configured default startup profile (Requirements 2.4, 6.7).</summary>
     ApplyDefaultProfile,
 
-    /// <summary>The configured default startup profile does not exist: skip and notify (Requirement 2.6).</summary>
+    /// <summary>The configured default startup profile does not exist: skip, reset to "Last Used", and persist (Requirements 2.6, 6.11).</summary>
     DefaultProfileMissing,
 }
 
@@ -85,6 +85,18 @@ public sealed class StartupCoordinator
     /// <summary>
     /// Determines, without side effects, what the GUI should do at startup.
     /// </summary>
+    /// <remarks>
+    /// The unified startup profile semantics (Requirements 6.6, 6.7, 6.10, 6.11):
+    /// <list type="bullet">
+    ///   <item>When <c>AutoApplyOnStartup</c> is false → skip regardless of dropdown selection.</item>
+    ///   <item>When <c>DefaultStartupProfileName</c> is null ("Last Used" selected) and <c>AutoApplyOnStartup</c> is true:
+    ///     apply <c>LastAppliedProfileName</c> if it exists and refers to a valid profile;
+    ///     if <c>LastAppliedProfileName</c> is null → skip with no error (Requirement 6.10).</item>
+    ///   <item>When <c>DefaultStartupProfileName</c> is a specific name and <c>AutoApplyOnStartup</c> is true:
+    ///     apply that profile if it exists (Requirement 6.7);
+    ///     if it does not exist → skip, reset to "Last Used", persist (Requirement 6.11).</item>
+    /// </list>
+    /// </remarks>
     /// <param name="settings">The loaded application settings.</param>
     /// <param name="existingProfileNames">The names of all currently stored profiles.</param>
     /// <param name="isCliOverride">When true, CLI arguments are present and startup profile application is skipped (Requirement 2.5).</param>
@@ -100,7 +112,15 @@ public sealed class StartupCoordinator
             return new StartupDecision(StartupAction.CliOverride, null, null);
         }
 
-        // Requirement 2.4 / 2.6: Default startup profile takes precedence when configured.
+        // When auto-apply is disabled, read current values without changing them.
+        if (!settings.AutoApplyOnStartup)
+        {
+            return new StartupDecision(StartupAction.AutoApplyDisabled, null, null);
+        }
+
+        // --- AutoApplyOnStartup is true from here ---
+
+        // Requirement 6.7: A specific profile name is configured in the startup dropdown.
         if (!string.IsNullOrEmpty(settings.DefaultStartupProfileName))
         {
             bool defaultProfileExists = existingProfileNames.Any(name =>
@@ -108,40 +128,35 @@ public sealed class StartupCoordinator
 
             if (defaultProfileExists)
             {
-                // Requirement 2.4: apply the configured default startup profile.
                 return new StartupDecision(StartupAction.ApplyDefaultProfile, settings.DefaultStartupProfileName, null);
             }
 
-            // Requirement 2.6: configured profile doesn't exist — warn and skip.
-            string missingNotice = $"Default startup profile '{settings.DefaultStartupProfileName}' was not found.";
+            // Requirement 6.11: configured profile doesn't exist — skip, reset to "Last Used", persist.
+            string missingNotice = $"Startup profile '{settings.DefaultStartupProfileName}' was not found. Resetting to \"Last Used\".";
             return new StartupDecision(StartupAction.DefaultProfileMissing, settings.DefaultStartupProfileName, missingNotice);
         }
 
-        // --- Existing AutoApplyOnStartup logic (fallback when no default profile is set) ---
+        // --- "Last Used" semantics: DefaultStartupProfileName is null ---
 
-        // Requirement 5.4: when auto-apply is disabled, read current values without changing them.
-        if (!settings.AutoApplyOnStartup)
+        string? lastProfile = settings.LastAppliedProfileName;
+
+        // Requirement 6.10: "Last Used" selected but LastAppliedProfileName is null → skip, no error.
+        if (string.IsNullOrEmpty(lastProfile))
         {
             return new StartupDecision(StartupAction.AutoApplyDisabled, null, null);
         }
 
-        string? lastProfile = settings.LastAppliedProfileName;
-        bool profileExists =
-            !string.IsNullOrEmpty(lastProfile) &&
-            existingProfileNames.Any(name =>
-                string.Equals(name, lastProfile, StringComparison.OrdinalIgnoreCase));
+        // Requirement 6.6: "Last Used" selected and LastAppliedProfileName refers to a valid profile → apply it.
+        bool lastProfileExists = existingProfileNames.Any(name =>
+            string.Equals(name, lastProfile, StringComparison.OrdinalIgnoreCase));
 
-        // Requirement 5.3: auto-apply enabled and the last profile still exists -> apply it.
-        if (profileExists)
+        if (lastProfileExists)
         {
             return new StartupDecision(StartupAction.ApplyLastProfile, lastProfile, null);
         }
 
-        // Requirement 5.6: auto-apply enabled but the last profile is missing (or none recorded)
-        // -> skip applying, surface a notice, and read current values without changing them.
-        string notice = string.IsNullOrEmpty(lastProfile)
-            ? "Auto-apply is enabled but no profile has been applied yet."
-            : $"Last profile '{lastProfile}' was not found.";
+        // "Last Used" selected but LastAppliedProfileName refers to a deleted profile → skip, notify.
+        string notice = $"Last applied profile '{lastProfile}' was not found.";
         return new StartupDecision(StartupAction.LastProfileMissing, lastProfile, notice);
     }
 
@@ -190,7 +205,9 @@ public sealed class StartupCoordinator
                 return $"Could not apply startup profile '{decision.ProfileName}': {defaultApplied.Error}";
 
             case StartupAction.DefaultProfileMissing:
-                // Requirement 2.6: configured default profile doesn't exist — surface notice.
+                // Requirement 6.11: configured default profile doesn't exist — reset to "Last Used" and persist.
+                var resetSettings = settings with { DefaultStartupProfileName = null };
+                _settingsStore.Save(resetSettings);
                 return decision.Notice;
 
             case StartupAction.CliOverride:

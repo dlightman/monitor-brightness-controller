@@ -5,6 +5,7 @@ using MonitorBrightnessController.Models;
 using MonitorBrightnessController.Presentation;
 using NSubstitute;
 using Xunit;
+using MbcUnit = MonitorBrightnessController.Models.Unit;
 
 namespace MonitorBrightnessController.Tests;
 
@@ -26,11 +27,11 @@ internal sealed class InMemorySettingsStore_Startup : ISettingsStore
 
     public AppSettings Load() => Current;
 
-    public Result<Unit> Save(AppSettings settings)
+    public Result<MbcUnit> Save(AppSettings settings)
     {
         Current = settings;
         SaveCount++;
-        return Result<Unit>.Success(Unit.Value);
+        return Result<MbcUnit>.Success(MbcUnit.Value);
     }
 }
 
@@ -117,14 +118,15 @@ public class StartupBehaviorTests
     }
 
     [Fact]
-    public void Decide_EnabledButNoLastProfileRecorded_ShowsNotice()
+    public void Decide_EnabledButNoLastProfileRecorded_SkipsWithNoError()
     {
+        // Requirement 6.10: "Last Used" selected but LastAppliedProfileName is null → skip, no error.
         var settings = new AppSettings { AutoApplyOnStartup = true, LastAppliedProfileName = null };
 
         StartupDecision decision = StartupCoordinator.Decide(settings, new List<string>());
 
-        decision.Action.Should().Be(StartupAction.LastProfileMissing);
-        decision.Notice.Should().NotBeNullOrEmpty();
+        decision.Action.Should().Be(StartupAction.AutoApplyDisabled);
+        decision.Notice.Should().BeNull();
     }
 
     // --- Run: side effects ---------------------------------------------------
@@ -140,7 +142,7 @@ public class StartupBehaviorTests
         });
         IProfileManager profileManager = ProfileManagerWith("focus");
         profileManager.ApplyProfile("focus", Arg.Any<IMonitorService>())
-            .Returns(Result<Unit>.Success(Unit.Value));
+            .Returns(Result<MbcUnit>.Success(MbcUnit.Value));
 
         var coordinator = new StartupCoordinator(store, profileManager, EmptyMonitorService());
         string? notice = coordinator.Run();
@@ -195,7 +197,7 @@ public class StartupBehaviorTests
         });
         IProfileManager profileManager = ProfileManagerWith("focus");
         profileManager.ApplyProfile("focus", Arg.Any<IMonitorService>())
-            .Returns(Result<Unit>.Failure("no mapped monitors available"));
+            .Returns(Result<MbcUnit>.Failure("no mapped monitors available"));
 
         var coordinator = new StartupCoordinator(store, profileManager, EmptyMonitorService());
         string? notice = coordinator.Run();
@@ -282,14 +284,15 @@ public class StartupBehaviorTests
     [Fact]
     public void Run_DefaultProfileExists_AppliesAndUpdatesLastApplied()
     {
-        // Requirements 2.4, 2.8: apply default startup profile and update LastAppliedProfileName.
+        // Requirements 2.4, 2.8, 6.7: apply default startup profile and update LastAppliedProfileName.
         var store = new InMemorySettingsStore_Startup(new AppSettings
         {
+            AutoApplyOnStartup = true,
             DefaultStartupProfileName = "nightMode",
         });
         IProfileManager profileManager = ProfileManagerWith("nightMode");
         profileManager.ApplyProfile("nightMode", Arg.Any<IMonitorService>())
-            .Returns(Result<Unit>.Success(Unit.Value));
+            .Returns(Result<MbcUnit>.Success(MbcUnit.Value));
 
         var coordinator = new StartupCoordinator(store, profileManager, EmptyMonitorService());
         string? notice = coordinator.Run();
@@ -306,11 +309,12 @@ public class StartupBehaviorTests
         // Requirement 2.7: disconnected monitors produce notice but don't crash.
         var store = new InMemorySettingsStore_Startup(new AppSettings
         {
+            AutoApplyOnStartup = true,
             DefaultStartupProfileName = "dayMode",
         });
         IProfileManager profileManager = ProfileManagerWith("dayMode");
         profileManager.ApplyProfile("dayMode", Arg.Any<IMonitorService>())
-            .Returns(Result<Unit>.Failure("monitors unavailable"));
+            .Returns(Result<MbcUnit>.Failure("monitors unavailable"));
 
         var coordinator = new StartupCoordinator(store, profileManager, EmptyMonitorService());
         string? notice = coordinator.Run();
@@ -321,11 +325,12 @@ public class StartupBehaviorTests
     }
 
     [Fact]
-    public void Run_DefaultProfileMissing_ReturnsNoticeWithProfileName()
+    public void Run_DefaultProfileMissing_ReturnsNoticeAndResetsToLastUsed()
     {
-        // Requirement 2.6: missing profile produces notice with profile name.
+        // Requirements 2.6, 6.11: missing profile produces notice and resets to "Last Used" (null).
         var store = new InMemorySettingsStore_Startup(new AppSettings
         {
+            AutoApplyOnStartup = true,
             DefaultStartupProfileName = "deleted",
         });
         IProfileManager profileManager = ProfileManagerWith("otherProfile");
@@ -335,6 +340,8 @@ public class StartupBehaviorTests
 
         notice.Should().NotBeNull();
         notice.Should().Contain("deleted");
+        store.Current.DefaultStartupProfileName.Should().BeNull("DefaultStartupProfileName should be reset to null (Last Used)");
+        store.SaveCount.Should().BeGreaterThan(0, "settings should be persisted after reset");
     }
 
     [Fact]
@@ -348,7 +355,7 @@ public class StartupBehaviorTests
         IProfileManager profileManager = ProfileManagerWith();
         IStartupRegistration startupReg = Substitute.For<IStartupRegistration>();
         startupReg.EnsureRegistration(Arg.Any<bool>())
-            .Returns(Result<Unit>.Success(Unit.Value));
+            .Returns(Result<MbcUnit>.Success(MbcUnit.Value));
 
         var coordinator = new StartupCoordinator(store, profileManager, EmptyMonitorService(), startupReg);
         coordinator.Run();

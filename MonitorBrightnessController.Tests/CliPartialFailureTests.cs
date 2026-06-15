@@ -10,6 +10,7 @@ using MonitorBrightnessController.Interfaces;
 using MonitorBrightnessController.Models;
 using NSubstitute;
 using Xunit;
+using MbcUnit = MonitorBrightnessController.Models.Unit;
 
 namespace MonitorBrightnessController.Tests;
 
@@ -50,21 +51,21 @@ internal sealed class RecordingMonitorService_PartialFailure : IMonitorService
 
     public IReadOnlyList<MonitorState> DetectMonitors() => _monitors;
 
-    public Result<Unit> SetBrightness(int monitorIndex, int brightnessValue)
+    public Result<MbcUnit> SetBrightness(int monitorIndex, int brightnessValue)
     {
         // Record every attempt regardless of outcome (this is the core of Property 8).
         SetBrightnessCalls.Add((monitorIndex, brightnessValue));
 
         return _successByIndex.TryGetValue(monitorIndex, out bool ok) && ok
-            ? Result<Unit>.Success(Unit.Value)
-            : Result<Unit>.Failure($"DDC/CI communication failed for monitor {monitorIndex}");
+            ? Result<MbcUnit>.Success(MbcUnit.Value)
+            : Result<MbcUnit>.Failure($"DDC/CI communication failed for monitor {monitorIndex}");
     }
 
     public Result<int> GetBrightness(int monitorIndex) =>
         throw new NotSupportedException("Not exercised by Property 8.");
 
-    public Result<Unit> SetGamma(int monitorIndex, int gammaValue) =>
-        Result<Unit>.Success(Unit.Value);
+    public Result<MbcUnit> SetGamma(int monitorIndex, int gammaValue) =>
+        Result<MbcUnit>.Success(MbcUnit.Value);
 
     public Result<int> GetGamma(int monitorIndex) =>
         throw new NotSupportedException("Not exercised by Property 8.");

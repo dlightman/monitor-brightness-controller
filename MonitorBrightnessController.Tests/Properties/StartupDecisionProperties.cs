@@ -56,17 +56,19 @@ public class StartupDecisionProperties
 {
     /// <summary>
     /// Property 4: Startup decision correctness.
-    /// For any combination of (DefaultStartupProfileName, list of existing profile names, CLI override flag),
+    /// For any combination of (DefaultStartupProfileName, AutoApplyOnStartup, LastAppliedProfileName,
+    /// list of existing profile names, CLI override flag),
     /// StartupCoordinator.Decide SHALL:
     /// - Skip profile application when CLI override is true regardless of other inputs;
-    /// - Apply the named profile when it exists in the profile list and CLI override is false;
-    /// - Produce a "missing profile" decision with notice containing the profile name when the named profile
-    ///   does not exist in the profile list and CLI override is false;
-    /// - Return AutoApplyDisabled when DefaultStartupProfileName is null/empty and not CLI override
-    ///   (with AutoApplyOnStartup = false).
+    /// - Return AutoApplyDisabled when AutoApplyOnStartup is false (regardless of DefaultStartupProfileName);
+    /// - When AutoApplyOnStartup is true and a specific DefaultStartupProfileName is configured:
+    ///   apply the named profile when it exists, or produce DefaultProfileMissing when it does not;
+    /// - When AutoApplyOnStartup is true and DefaultStartupProfileName is null ("Last Used"):
+    ///   apply LastAppliedProfileName if it exists, or return AutoApplyDisabled if LastAppliedProfileName is null,
+    ///   or return LastProfileMissing if LastAppliedProfileName refers to a deleted profile.
     /// </summary>
     /// <remarks>
-    /// **Validates: Requirements 2.4, 2.5, 2.6**
+    /// **Validates: Requirements 2.4, 2.5, 2.6, 6.6, 6.7, 6.10, 6.11**
     /// </remarks>
     [Property(MaxTest = 100)]
     public Property StartupDecision_IsCorrectForAllInputCombinations()
@@ -87,18 +89,27 @@ public class StartupDecisionProperties
             Gen.Constant<string?>(string.Empty),
             profileNameGen.Select<string, string?>(n => n));
 
+        // Generate a nullable last applied profile name
+        var lastAppliedGen = Gen.OneOf(
+            Gen.Constant<string?>(null),
+            Gen.Constant<string?>(string.Empty),
+            profileNameGen.Select<string, string?>(n => n));
+
         var inputGen =
             from defaultProfile in defaultProfileGen
+            from lastApplied in lastAppliedGen
+            from autoApply in Arb.Generate<bool>()
             from profileList in profileListGen
             from isCliOverride in Arb.Generate<bool>()
-            select new { DefaultProfile = defaultProfile, ProfileList = profileList, IsCliOverride = isCliOverride };
+            select new { DefaultProfile = defaultProfile, LastApplied = lastApplied, AutoApply = autoApply, ProfileList = profileList, IsCliOverride = isCliOverride };
 
         return Prop.ForAll(Arb.From(inputGen), input =>
         {
             var settings = new AppSettings
             {
                 DefaultStartupProfileName = input.DefaultProfile,
-                AutoApplyOnStartup = false // Keep focused on default profile logic
+                AutoApplyOnStartup = input.AutoApply,
+                LastAppliedProfileName = input.LastApplied
             };
 
             var decision = StartupCoordinator.Decide(settings, input.ProfileList, input.IsCliOverride);
@@ -109,14 +120,20 @@ public class StartupDecisionProperties
                 decision.Action.Should().Be(StartupAction.CliOverride,
                     "CLI override should always result in CliOverride action regardless of other inputs");
             }
+            else if (!input.AutoApply)
+            {
+                // AutoApplyOnStartup is false → skip regardless of dropdown selection
+                decision.Action.Should().Be(StartupAction.AutoApplyDisabled,
+                    "when AutoApplyOnStartup is false, action should be AutoApplyDisabled");
+            }
             else if (!string.IsNullOrEmpty(input.DefaultProfile))
             {
+                // Requirement 6.7: a specific profile is configured
                 bool profileExists = input.ProfileList.Any(name =>
                     string.Equals(name, input.DefaultProfile, StringComparison.OrdinalIgnoreCase));
 
                 if (profileExists)
                 {
-                    // Requirement 2.4: apply the configured default startup profile
                     decision.Action.Should().Be(StartupAction.ApplyDefaultProfile,
                         "when DefaultStartupProfileName is set and exists, action should be ApplyDefaultProfile");
                     decision.ProfileName.Should().Be(input.DefaultProfile,
@@ -124,7 +141,7 @@ public class StartupDecisionProperties
                 }
                 else
                 {
-                    // Requirement 2.6: configured profile doesn't exist — warn and skip
+                    // Requirement 6.11: configured profile doesn't exist — skip, reset
                     decision.Action.Should().Be(StartupAction.DefaultProfileMissing,
                         "when DefaultStartupProfileName is set but not found, action should be DefaultProfileMissing");
                     decision.ProfileName.Should().Be(input.DefaultProfile,
@@ -136,9 +153,33 @@ public class StartupDecisionProperties
             }
             else
             {
-                // DefaultStartupProfileName is null or empty, AutoApplyOnStartup is false
-                decision.Action.Should().Be(StartupAction.AutoApplyDisabled,
-                    "when no default profile is set and AutoApplyOnStartup is false, action should be AutoApplyDisabled");
+                // "Last Used" semantics: DefaultStartupProfileName is null/empty
+                if (string.IsNullOrEmpty(input.LastApplied))
+                {
+                    // Requirement 6.10: LastAppliedProfileName is null → skip, no error
+                    decision.Action.Should().Be(StartupAction.AutoApplyDisabled,
+                        "when 'Last Used' is selected and LastAppliedProfileName is null, action should be AutoApplyDisabled");
+                }
+                else
+                {
+                    bool lastProfileExists = input.ProfileList.Any(name =>
+                        string.Equals(name, input.LastApplied, StringComparison.OrdinalIgnoreCase));
+
+                    if (lastProfileExists)
+                    {
+                        // Requirement 6.6: apply last applied profile
+                        decision.Action.Should().Be(StartupAction.ApplyLastProfile,
+                            "when 'Last Used' is selected and LastAppliedProfileName exists, action should be ApplyLastProfile");
+                        decision.ProfileName.Should().Be(input.LastApplied,
+                            "the profile name should be the LastAppliedProfileName");
+                    }
+                    else
+                    {
+                        // Last applied profile is missing
+                        decision.Action.Should().Be(StartupAction.LastProfileMissing,
+                            "when 'Last Used' is selected but LastAppliedProfileName is missing, action should be LastProfileMissing");
+                    }
+                }
             }
         });
     }

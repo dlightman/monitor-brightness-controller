@@ -8,6 +8,7 @@ using MonitorBrightnessController.Interfaces;
 using MonitorBrightnessController.Models;
 using MonitorBrightnessController.Presentation;
 using NSubstitute;
+using MbcUnit = MonitorBrightnessController.Models.Unit;
 
 namespace MonitorBrightnessController.Tests.Properties;
 
@@ -29,10 +30,10 @@ internal sealed class InMemorySettingsStore_Dropdown : ISettingsStore
 
     public AppSettings Load() => Current;
 
-    public Result<Unit> Save(AppSettings settings)
+    public Result<MbcUnit> Save(AppSettings settings)
     {
         Current = settings;
-        return Result<Unit>.Success(Unit.Value);
+        return Result<MbcUnit>.Success(MbcUnit.Value);
     }
 }
 

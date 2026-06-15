@@ -6,6 +6,7 @@ using FsCheck.Xunit;
 using MonitorBrightnessController.Application;
 using MonitorBrightnessController.Interfaces;
 using MonitorBrightnessController.Models;
+using MbcUnit = MonitorBrightnessController.Models.Unit;
 using NSubstitute;
 
 namespace MonitorBrightnessController.Tests.Properties;
@@ -106,7 +107,7 @@ public class GammaValidationProperties
 
         var (service, interop) = CreateServiceWithOneMonitor();
 
-        Result<Unit> result = service.SetGamma(1, outOfRangeValue);
+        Result<MbcUnit> result = service.SetGamma(1, outOfRangeValue);
 
         result.IsSuccess.Should().BeFalse(
             "gamma value {0} is outside [0, 100] and should be rejected", outOfRangeValue);
@@ -134,9 +135,9 @@ public class GammaValidationProperties
         var (service, interop) = CreateServiceWithOneMonitor();
 
         // Mock SetGamma to return success for this value
-        interop.SetGamma(TestHandle, validGammaValue).Returns(Result<Unit>.Success(Unit.Value));
+        interop.SetGamma(TestHandle, validGammaValue).Returns(Result<MbcUnit>.Success(MbcUnit.Value));
 
-        Result<Unit> result = service.SetGamma(1, validGammaValue);
+        Result<MbcUnit> result = service.SetGamma(1, validGammaValue);
 
         result.IsSuccess.Should().BeTrue(
             "gamma value {0} is within [0, 100] and the DDC/CI mock returns success", validGammaValue);
@@ -166,7 +167,7 @@ public class GammaValidationProperties
 
         var (service, interop) = CreateServiceWithOneMonitor();
 
-        Result<Unit> result = service.SetGamma(invalidIndex, 50);
+        Result<MbcUnit> result = service.SetGamma(invalidIndex, 50);
 
         result.IsSuccess.Should().BeFalse(
             "monitor index {0} does not exist and should produce a failure", invalidIndex);

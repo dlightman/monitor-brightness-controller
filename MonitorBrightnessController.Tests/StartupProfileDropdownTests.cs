@@ -5,6 +5,7 @@ using MonitorBrightnessController.Models;
 using MonitorBrightnessController.Presentation;
 using NSubstitute;
 using Xunit;
+using MbcUnit = MonitorBrightnessController.Models.Unit;
 
 namespace MonitorBrightnessController.Tests;
 
@@ -24,16 +25,16 @@ internal sealed class InMemorySettingsStore_Dropdown : ISettingsStore
 
     public AppSettings Load() => Current;
 
-    public Result<Unit> Save(AppSettings settings)
+    public Result<MbcUnit> Save(AppSettings settings)
     {
         if (FailOnNextSave)
         {
             FailOnNextSave = false;
-            return Result<Unit>.Failure("Simulated save failure");
+            return Result<MbcUnit>.Failure("Simulated save failure");
         }
 
         Current = settings;
-        return Result<Unit>.Success(Unit.Value);
+        return Result<MbcUnit>.Success(MbcUnit.Value);
     }
 }
 
