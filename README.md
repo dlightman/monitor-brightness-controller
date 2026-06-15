@@ -26,9 +26,9 @@ Built with C# / .NET 8 / WPF. Distributed as a single executable.
 
 ## Screenshots
 
-| Monitors | Profiles | Settings |
-|----------|----------|----------|
-| ![Monitors](docs/screenshots/monitors-tab.png?v=2) | ![Profiles](docs/screenshots/profiles-tab.png) | ![Settings](docs/screenshots/settings-tab.png) |
+| Monitors | Settings |
+|----------|----------|
+| ![Monitors](docs/screenshots/monitors-tab.png?v=2) | ![Settings](docs/screenshots/settings-tab.png) |
 
 ## Prerequisites
 
@@ -65,10 +65,9 @@ Launch without arguments:
 MonitorBrightnessController.exe
 ```
 
-- **Monitors tab** — drag sliders or type values (0–100) to adjust brightness and gamma for each monitor
-- **Profiles tab** — create/apply/update/delete presets (stores both brightness and gamma), or generate Windows shortcuts
-- **Settings tab** — configure application behavior (transitions, startup, tray)
-- **Help tab** — built-in documentation
+- **Monitors tab** — drag sliders or type values (0–100) to adjust brightness and gamma for each monitor; inline Profile Strip for saving, applying, updating, and deleting presets
+- **Settings tab** — configure startup profile, create desktop shortcuts, and set application behavior (transitions, tray, auto-start)
+- **About tab** — version, build date, and project repository link
 
 ### CLI Mode
 
@@ -106,8 +105,8 @@ MonitorBrightnessController.exe --monitor 1 --brightness 80 --monitor 2 --gamma 
 ### Keyboard Shortcuts
 
 The easiest approach:
-1. Go to the **Profiles** tab
-2. Select a profile and click **Create Shortcut...**
+1. Go to the **Settings** tab → **Create Shortcut** section
+2. Select a profile and click **Create Shortcut**
 3. Save the `.lnk` file (e.g. to Desktop)
 4. Right-click the shortcut → Properties → **Shortcut key** → assign a hotkey (e.g. Ctrl+Alt+G)
 
