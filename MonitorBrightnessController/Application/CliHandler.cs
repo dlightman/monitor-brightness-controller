@@ -31,6 +31,9 @@ public sealed record ParsedCliArguments
     /// <summary>The profile name supplied via <c>--profile</c>, or null when not present.</summary>
     public string? ProfileName { get; init; }
 
+    /// <summary>True when the <c>--silent</c> flag was present in the arguments.</summary>
+    public bool Silent { get; init; }
+
     /// <summary>A human-readable parse error message, or null when parsing succeeded.</summary>
     public string? ParseError { get; init; }
 
@@ -45,10 +48,11 @@ public sealed record ParsedCliArguments
 
     /// <summary>Creates a successful parse result.</summary>
     public static ParsedCliArguments Success(
-        IReadOnlyList<MonitorCommand> commands, string? profileName) => new()
+        IReadOnlyList<MonitorCommand> commands, string? profileName, bool silent = false) => new()
     {
         MonitorCommands = commands,
         ProfileName = profileName,
+        Silent = silent,
     };
 
     /// <summary>Creates a failed parse result carrying the given error.</summary>
@@ -71,6 +75,7 @@ public sealed class CliHandler : ICliHandler
     private const string BrightnessOption = "--brightness";
     private const string GammaOption = "--gamma";
     private const string ProfileOption = "--profile";
+    private const string SilentOption = "--silent";
 
     /// <summary>Usage help shown for unknown or missing arguments.</summary>
     public const string UsageText =
@@ -82,7 +87,8 @@ public sealed class CliHandler : ICliHandler
         "  Both --brightness and --gamma are optional within a --monitor group,\n" +
         "  but at least one must be specified.\n" +
         "\n" +
-        "  --profile <name>                      Apply a named brightness and gamma profile";
+        "  --profile <name>                      Apply a named brightness and gamma profile\n" +
+        "  --silent                              Start minimized to system tray (no window shown)";
 
     private readonly IMonitorService _monitorService;
     private readonly IProfileManager _profileManager;
@@ -163,13 +169,19 @@ public sealed class CliHandler : ICliHandler
 
         var commands = new List<MonitorCommand>();
         string? profileName = null;
+        bool silent = false;
 
         int i = 0;
         while (i < args.Length)
         {
             string arg = args[i];
 
-            if (string.Equals(arg, MonitorOption, StringComparison.Ordinal))
+            if (string.Equals(arg, SilentOption, StringComparison.Ordinal))
+            {
+                silent = true;
+                i++;
+            }
+            else if (string.Equals(arg, MonitorOption, StringComparison.Ordinal))
             {
                 // Expect: --monitor <id> followed by at least one of --brightness/--gamma
                 if (i + 1 >= args.Length || IsOption(args[i + 1]))
@@ -184,7 +196,7 @@ public sealed class CliHandler : ICliHandler
                 string? gammaRaw = null;
 
                 // Consume --brightness and/or --gamma in any order until the next
-                // --monitor, --profile, or end-of-args is reached.
+                // --monitor, --profile, --silent, or end-of-args is reached.
                 while (i < args.Length)
                 {
                     if (string.Equals(args[i], BrightnessOption, StringComparison.Ordinal))
@@ -258,12 +270,13 @@ public sealed class CliHandler : ICliHandler
             }
         }
 
-        if (commands.Count == 0 && profileName is null)
+        // --silent alone is a valid invocation (GUI silent mode).
+        if (commands.Count == 0 && profileName is null && !silent)
         {
             return ParsedCliArguments.WithError("No arguments specified.", showUsage: true);
         }
 
-        return ParsedCliArguments.Success(commands, profileName);
+        return ParsedCliArguments.Success(commands, profileName, silent);
     }
 
     private static bool IsOption(string value) => value.StartsWith("--", StringComparison.Ordinal);

@@ -181,35 +181,35 @@ public class InstallDirectoryDetectionProperties
 public static class EnsureRegistrationArbitraries
 {
     /// <summary>
-    /// Generates existing registry values: null (missing), matching quoted path,
+    /// Generates existing registry values: null (missing), matching quoted path with --silent,
     /// mismatched path, or various casing variations.
     /// </summary>
     public static Arbitrary<string?> ExistingRegistryValue()
     {
         var currentExePath = Environment.ProcessPath ?? "C:\\test\\app.exe";
-        var quotedCurrent = $"\"{currentExePath}\"";
+        var expectedValue = $"\"{currentExePath}\" --silent";
 
         var gen = Gen.OneOf(
             // null — entry is missing
             Gen.Constant<string?>(null),
-            // Exact match (quoted current path)
-            Gen.Constant<string?>(quotedCurrent),
+            // Exact match (quoted current path with --silent)
+            Gen.Constant<string?>(expectedValue),
             // Case-insensitive match (upper)
-            Gen.Constant<string?>(quotedCurrent.ToUpperInvariant()),
+            Gen.Constant<string?>(expectedValue.ToUpperInvariant()),
             // Case-insensitive match (lower)
-            Gen.Constant<string?>(quotedCurrent.ToLowerInvariant()),
+            Gen.Constant<string?>(expectedValue.ToLowerInvariant()),
             // Mismatched path — different exe location
             Gen.Elements(
-                "\"C:\\OldPath\\MonitorBrightnessController.exe\"",
-                "\"D:\\Programs\\app.exe\"",
-                "\"C:\\Users\\Someone\\Desktop\\MonitorBrightnessController.exe\"",
-                "\"C:\\Program Files\\OtherApp\\test.exe\"",
-                "\"C:\\temp\\old_location\\MonitorBrightnessController.exe\""
+                "\"C:\\OldPath\\MonitorBrightnessController.exe\" --silent",
+                "\"D:\\Programs\\app.exe\" --silent",
+                "\"C:\\Users\\Someone\\Desktop\\MonitorBrightnessController.exe\" --silent",
+                "\"C:\\Program Files\\OtherApp\\test.exe\" --silent",
+                "\"C:\\temp\\old_location\\MonitorBrightnessController.exe\" --silent"
             ).Select(s => (string?)s),
-            // Unquoted mismatched path
+            // Old format without --silent (mismatched)
             Gen.Elements(
-                "C:\\OldPath\\MonitorBrightnessController.exe",
-                "D:\\Programs\\app.exe"
+                "\"C:\\OldPath\\MonitorBrightnessController.exe\"",
+                "\"D:\\Programs\\app.exe\""
             ).Select(s => (string?)s)
         );
 
@@ -262,7 +262,7 @@ public class EnsureRegistrationProperties
             if (string.IsNullOrEmpty(currentExePath))
                 return;
 
-            var expectedQuotedPath = $"\"{currentExePath}\"";
+            var expectedQuotedPath = $"\"{currentExePath}\" --silent";
 
             // Act
             var result = sut.EnsureRegistration(enabled);
@@ -276,7 +276,7 @@ public class EnsureRegistrationProperties
             }
             else if (existingValue is null)
             {
-                // When enabled + missing: should create the entry with quoted path
+                // When enabled + missing: should create the entry with quoted path + --silent
                 result.IsSuccess.Should().BeTrue("EnsureRegistration should succeed when creating a missing entry");
                 runKeyMock.Received(1).SetValue(AppName, expectedQuotedPath);
             }
@@ -288,7 +288,7 @@ public class EnsureRegistrationProperties
             }
             else
             {
-                // When enabled + differs: should update with quoted path
+                // When enabled + differs: should update with quoted path + --silent
                 result.IsSuccess.Should().BeTrue("EnsureRegistration should succeed when updating a mismatched entry");
                 runKeyMock.Received(1).SetValue(AppName, expectedQuotedPath);
             }

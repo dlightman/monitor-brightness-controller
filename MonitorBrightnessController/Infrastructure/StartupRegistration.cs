@@ -42,7 +42,7 @@ public class StartupRegistration : IStartupRegistration
                 return Result<Unit>.Failure("Could not determine the executable path.");
             }
 
-            runKey.SetValue(AppName, $"\"{exePath}\"");
+            runKey.SetValue(AppName, $"\"{exePath}\" --silent");
         }
         else
         {
@@ -74,15 +74,11 @@ public class StartupRegistration : IStartupRegistration
             return Result<Unit>.Failure("Could not determine the executable path.");
         }
 
-        var quotedPath = $"\"{currentExePath}\"";
+        var expectedValue = $"\"{currentExePath}\" --silent";
 
-        if (existingValue is null)
+        if (existingValue is null || !string.Equals(existingValue, expectedValue, StringComparison.OrdinalIgnoreCase))
         {
-            runKey.SetValue(AppName, quotedPath);
-        }
-        else if (!string.Equals(existingValue, quotedPath, StringComparison.OrdinalIgnoreCase))
-        {
-            runKey.SetValue(AppName, quotedPath);
+            runKey.SetValue(AppName, expectedValue);
         }
 
         return Result<Unit>.Success(Unit.Value);
@@ -97,7 +93,7 @@ public class StartupRegistration : IStartupRegistration
             return Result<Unit>.Failure("Unable to open the startup registry key for writing.");
         }
 
-        runKey.SetValue(AppName, $"\"{newExePath}\"");
+        runKey.SetValue(AppName, $"\"{newExePath}\" --silent");
         return Result<Unit>.Success(Unit.Value);
     }
 

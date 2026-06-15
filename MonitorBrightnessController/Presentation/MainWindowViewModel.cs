@@ -1,8 +1,10 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using MonitorBrightnessController.Application;
 using MonitorBrightnessController.Infrastructure;
@@ -31,7 +33,9 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly IProfileManager? _profileManager;
     private readonly IStartupRegistration? _startupRegistration;
     private readonly IApplicationInstaller? _applicationInstaller;
+    private readonly IUpdateChecker? _updateChecker;
     private readonly TransitionCoordinator _transitionCoordinator = new();
+    private bool _updateCheckPerformed;
 
     private bool _autoApplyOnStartup;
     private bool _minimizeToTray;
@@ -39,7 +43,9 @@ public sealed class MainWindowViewModel : ViewModelBase
     private int _transitionDurationMs = 500;
     private bool _startWithWindows;
     private bool _refreshOnFocus = true;
+    private bool _checkForUpdatesOnStartup = true;
     private string? _startupNotice;
+    private string _monitorsTabHeader = "Current Settings";
     private bool _isProperlyInstalled;
     private string? _installResultMessage;
     private string _selectedStartupProfile = "None";
@@ -47,6 +53,9 @@ public sealed class MainWindowViewModel : ViewModelBase
     private string? _startupProfileError;
     private string? _selectedShortcutProfile;
     private string? _shortcutStatusMessage;
+    private bool _isUpdateAvailable;
+    private string _latestVersionText = string.Empty;
+    private string _updateReleaseUrl = string.Empty;
 
     /// <summary>
     /// Creates the main window view model with only a monitor service. No startup auto-apply
@@ -66,6 +75,8 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         ProperInstallCommand = new RelayCommand(ExecuteProperInstall, () => !IsProperlyInstalled);
         CreateShortcutCommand = new RelayCommand(ExecuteCreateShortcut, () => CanCreateShortcut);
+        DismissUpdateCommand = new RelayCommand(() => IsUpdateAvailable = false);
+        OpenReleaseUrlCommand = new RelayCommand(ExecuteOpenReleaseUrl);
         Load();
     }
 
@@ -80,18 +91,21 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <param name="profileManager">The profile manager used to apply the last-used profile.</param>
     /// <param name="startupRegistration">Optional startup registration for managing auto-start with Windows.</param>
     /// <param name="applicationInstaller">Optional installer for copying the app to Program Files.</param>
+    /// <param name="updateChecker">Optional update checker for querying GitHub releases on startup.</param>
     public MainWindowViewModel(
         IMonitorService monitorService,
         ISettingsStore settingsStore,
         IProfileManager profileManager,
         IStartupRegistration? startupRegistration = null,
-        IApplicationInstaller? applicationInstaller = null)
+        IApplicationInstaller? applicationInstaller = null,
+        IUpdateChecker? updateChecker = null)
     {
         _monitorService = monitorService ?? throw new ArgumentNullException(nameof(monitorService));
         _settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
         _profileManager = profileManager ?? throw new ArgumentNullException(nameof(profileManager));
         _startupRegistration = startupRegistration;
         _applicationInstaller = applicationInstaller;
+        _updateChecker = updateChecker;
 
         var assembly = Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
         var version = assembly.GetName().Version;
@@ -103,6 +117,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         _isProperlyInstalled = _applicationInstaller?.IsInstalledInProgramFiles() ?? false;
         ProperInstallCommand = new RelayCommand(ExecuteProperInstall, () => !IsProperlyInstalled);
         CreateShortcutCommand = new RelayCommand(ExecuteCreateShortcut, () => CanCreateShortcut);
+        DismissUpdateCommand = new RelayCommand(() => IsUpdateAvailable = false);
+        OpenReleaseUrlCommand = new RelayCommand(ExecuteOpenReleaseUrl);
 
         // Seed the toggles from persisted settings (defaults applied on first use).
         var loadedSettings = _settingsStore.Load();
@@ -112,6 +128,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         _transitionDurationMs = loadedSettings.TransitionDurationMs;
         _startWithWindows = loadedSettings.StartWithWindows;
         _refreshOnFocus = loadedSettings.RefreshOnFocus;
+        _checkForUpdatesOnStartup = loadedSettings.CheckForUpdatesOnStartup;
 
         // Initialize the startup profile dropdown (Req 3.1, 3.2)
         _selectedStartupProfile = loadedSettings.DefaultStartupProfileName ?? "None";
@@ -149,6 +166,17 @@ public sealed class MainWindowViewModel : ViewModelBase
         if (profileAppliedSuccessfully && !string.IsNullOrEmpty(decision.ProfileName))
         {
             PreviewProfile(decision.ProfileName);
+            MonitorsTabHeader = $"Profile: {decision.ProfileName}";
+        }
+        else
+        {
+            MonitorsTabHeader = "Current Settings";
+        }
+
+        // Fire-and-forget update check (Requirement 5.1, 5.7)
+        if (loadedSettings.CheckForUpdatesOnStartup && _updateChecker is not null)
+        {
+            _ = CheckForUpdateInternalAsync();
         }
     }
 
@@ -310,6 +338,27 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Whether the application checks GitHub for updates on GUI startup (Requirement 6.2, 6.3).
+    /// When changed, persists immediately via the settings store.
+    /// </summary>
+    public bool CheckForUpdatesOnStartup
+    {
+        get => _checkForUpdatesOnStartup;
+        set
+        {
+            if (_checkForUpdatesOnStartup == value)
+            {
+                return;
+            }
+
+            _checkForUpdatesOnStartup = value;
+            OnPropertyChanged();
+
+            PersistSetting(s => s with { CheckForUpdatesOnStartup = value });
+        }
+    }
+
+    /// <summary>
     /// A user-facing notice produced during startup (e.g. the last profile was not found, or
     /// an auto-apply failure). Null when there is nothing to report.
     /// </summary>
@@ -331,6 +380,26 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     /// <summary>True when a startup notice is currently displayed.</summary>
     public bool HasStartupNotice => !string.IsNullOrEmpty(_startupNotice);
+
+    /// <summary>
+    /// The header text displayed above the monitor controls in the Monitors tab.
+    /// Shows the applied profile name when a startup profile was used, or "Current Settings"
+    /// when displaying live DDC/CI values (Requirement 3.2).
+    /// </summary>
+    public string MonitorsTabHeader
+    {
+        get => _monitorsTabHeader;
+        private set
+        {
+            if (_monitorsTabHeader == value)
+            {
+                return;
+            }
+
+            _monitorsTabHeader = value;
+            OnPropertyChanged();
+        }
+    }
 
     /// <summary>
     /// Whether the application is currently running from the Program Files install directory (Req 4.9).
@@ -465,6 +534,71 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     /// <summary>True when a shortcut status message is available for display.</summary>
     public bool HasShortcutStatusMessage => !string.IsNullOrEmpty(_shortcutStatusMessage);
+
+    /// <summary>
+    /// Whether a newer version of the application is available. When true, the update
+    /// notification banner is displayed in the main window (Requirement 5.2).
+    /// </summary>
+    public bool IsUpdateAvailable
+    {
+        get => _isUpdateAvailable;
+        set
+        {
+            if (_isUpdateAvailable == value)
+            {
+                return;
+            }
+
+            _isUpdateAvailable = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Display text for the update notification, e.g. "Version 1.5.0 is available" (Requirement 5.2).
+    /// </summary>
+    public string LatestVersionText
+    {
+        get => _latestVersionText;
+        set
+        {
+            if (_latestVersionText == value)
+            {
+                return;
+            }
+
+            _latestVersionText = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// The URL to the GitHub release page for the latest version (Requirement 5.3).
+    /// </summary>
+    public string UpdateReleaseUrl
+    {
+        get => _updateReleaseUrl;
+        set
+        {
+            if (_updateReleaseUrl == value)
+            {
+                return;
+            }
+
+            _updateReleaseUrl = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Command that dismisses the update notification by setting <see cref="IsUpdateAvailable"/> to false.
+    /// </summary>
+    public RelayCommand DismissUpdateCommand { get; } = null!;
+
+    /// <summary>
+    /// Command that opens <see cref="UpdateReleaseUrl"/> in the user's default browser (Requirement 5.3).
+    /// </summary>
+    public RelayCommand OpenReleaseUrlCommand { get; } = null!;
 
     /// <summary>
     /// Delegate for actual shortcut creation logic (COM interop with WScript.Shell).
@@ -924,6 +1058,53 @@ public sealed class MainWindowViewModel : ViewModelBase
         {
             vm.SmoothTransitionEnabled = _smoothTransition;
             vm.TransitionDurationMs = _transitionDurationMs;
+        }
+    }
+
+    /// <summary>
+    /// Opens <see cref="UpdateReleaseUrl"/> in the user's default browser (Requirement 5.3).
+    /// </summary>
+    private void ExecuteOpenReleaseUrl()
+    {
+        if (string.IsNullOrEmpty(_updateReleaseUrl))
+        {
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = _updateReleaseUrl,
+            UseShellExecute = true
+        });
+    }
+
+    /// <summary>
+    /// Asynchronously checks for application updates. Populates notification properties
+    /// when a newer version is detected. Ensures only one check per launch and silently
+    /// catches all exceptions (Requirement 5.5, 5.7).
+    /// </summary>
+    private async Task CheckForUpdateInternalAsync()
+    {
+        if (_updateCheckPerformed)
+        {
+            return;
+        }
+
+        _updateCheckPerformed = true;
+
+        try
+        {
+            var result = await _updateChecker!.CheckForUpdateAsync().ConfigureAwait(false);
+            if (result.IsUpdateAvailable)
+            {
+                LatestVersionText = $"Version {result.LatestVersion} is available";
+                UpdateReleaseUrl = result.ReleaseUrl ?? string.Empty;
+                IsUpdateAvailable = true;
+            }
+        }
+        catch
+        {
+            // Silently swallow all exceptions (Requirement 5.5)
         }
     }
 }

@@ -1,0 +1,121 @@
+<UserControl x:Class="MonitorBrightnessController.Presentation.HelpTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+        <StackPanel Margin="12">
+
+            <!-- Section: Monitor Brightness & Gamma Control -->
+            <TextBlock Text="Monitor Brightness &amp; Gamma Control"
+                       FontWeight="Bold" FontSize="15"
+                       Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,16">
+                Adjust the brightness and gamma of each connected monitor individually using sliders or numeric text input.
+                Values range from 0 to 100. Changes are applied immediately via DDC/CI when you release the slider
+                or press Enter in the text field. If a monitor does not support DDC/CI, an error message is displayed
+                next to its controls.
+            </TextBlock>
+
+            <!-- Section: Profiles -->
+            <TextBlock Text="Profiles"
+                       FontWeight="Bold" FontSize="15"
+                       Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,16">
+                Save your current brightness and gamma settings as a named profile for quick recall.
+                Use "Save As New" to create a profile, select an existing profile from the dropdown to apply it,
+                or delete profiles you no longer need. A default startup profile can be configured in Settings
+                to automatically apply when the application launches.
+            </TextBlock>
+
+            <!-- Section: Smooth Transitions -->
+            <TextBlock Text="Smooth Transitions"
+                       FontWeight="Bold" FontSize="15"
+                       Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,16">
+                When applying a profile, brightness and gamma values transition smoothly over a short duration
+                rather than changing abruptly. This provides a comfortable visual experience, especially when
+                switching between profiles with large differences in brightness or gamma values.
+            </TextBlock>
+
+            <!-- Section: System Tray Behavior -->
+            <TextBlock Text="System Tray Behavior"
+                       FontWeight="Bold" FontSize="15"
+                       Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,16">
+                When minimized, the application resides in the system tray (notification area).
+                Double-click the tray icon to restore the main window. Right-click the tray icon
+                for a context menu with options to show the window or exit the application.
+                The application continues running in the background while minimized to tray.
+            </TextBlock>
+
+            <!-- Section: Startup Settings -->
+            <TextBlock Text="Startup Settings"
+                       FontWeight="Bold" FontSize="15"
+                       Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,16">
+                Configure the application to start automatically with Windows via the "Start with Windows"
+                option in Settings. When enabled, the application is registered in the Windows Run registry
+                and launches in silent mode on login. You can also set a default startup profile that is
+                applied automatically each time the application starts.
+            </TextBlock>
+
+            <!-- Section: CLI Usage -->
+            <TextBlock Text="CLI Usage"
+                       FontWeight="Bold" FontSize="15"
+                       Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,16">
+                The application supports command-line arguments for scripting and automation.
+                Use --monitor &lt;index&gt; --brightness &lt;value&gt; --gamma &lt;value&gt; to set
+                a specific monitor's values directly. Use --profile &lt;name&gt; to apply a saved profile.
+                Multiple --monitor groups can be specified in a single command. The application exits
+                after executing CLI commands without showing a window.
+            </TextBlock>
+
+            <!-- Section: Silent Startup Mode -->
+            <TextBlock Text="Silent Startup Mode"
+                       FontWeight="Bold" FontSize="15"
+                       Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,16">
+                Launch the application with the --silent argument to start without displaying the main window.
+                The application minimizes directly to the system tray and optionally applies the configured
+                startup profile. This mode is used automatically when "Start with Windows" is enabled,
+                ensuring your desktop is not interrupted by a configuration window on login.
+            </TextBlock>
+
+            <!-- Section: Auto-Update Notifications -->
+            <TextBlock Text="Auto-Update Notifications"
+                       FontWeight="Bold" FontSize="15"
+                       Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,16">
+                On startup, the application checks for newer versions on GitHub. If a new version is available,
+                a notification banner appears at the top of the window with a link to the release page.
+                You can dismiss the notification or disable update checks entirely in Settings.
+                The application never downloads or installs updates automatically.
+            </TextBlock>
+
+            <!-- Section: Shortcut Creation -->
+            <TextBlock Text="Shortcut Creation"
+                       FontWeight="Bold" FontSize="15"
+                       Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,16">
+                Create desktop or Start Menu shortcuts to the application from the Settings tab.
+                Shortcuts point to the installed application executable and can be created
+                regardless of how the application was originally launched.
+            </TextBlock>
+
+            <!-- Section: Proper Install -->
+            <TextBlock Text="Proper Install"
+                       FontWeight="Bold" FontSize="15"
+                       Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,16">
+                For full functionality including Start with Windows and shortcut creation, install
+                the application to a permanent location (e.g., Program Files or AppData). Running from
+                a temporary or downloads folder may limit certain features. Use the "Install" option
+                in Settings to copy the application to the recommended location and configure it properly.
+            </TextBlock>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

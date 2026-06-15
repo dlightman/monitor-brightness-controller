@@ -13,10 +13,13 @@ Built with C# / .NET 8 / WPF. Distributed as a single executable.
 - **Named profiles** — save, apply, update, and delete brightness and gamma presets (e.g. "Gaming", "Working")
 - **Backward-compatible profiles** — existing brightness-only profiles continue to work without modification
 - **CLI mode** — set brightness, gamma, or apply profiles via command-line arguments (no GUI shown)
+- **Silent startup mode** — launch with `--silent` to start minimized to the system tray without showing a window
+- **Auto-update notifications** — checks GitHub for newer versions on startup and shows a dismissible notification
+- **In-app Help tab** — complete documentation of all features accessible without leaving the application
 - **Windows shortcut creation** — generate desktop shortcuts for any saved profile (Settings tab)
 - **System tray** — optional minimize-to-tray with double-click restore and context menu
 - **Smooth transitions** — optional animated brightness and gamma fade between values (independent per setting per monitor)
-- **Start with Windows** — optional auto-launch on login
+- **Start with Windows** — optional auto-launch on login (now launches in silent mode automatically)
 - **Startup registry self-healing** — autostart path auto-corrects if the exe is moved
 - **Unified startup profile** — choose "Last Used" or a specific profile to apply on every GUI launch
 - **Proper Install** — one-click copy to Program Files with UAC elevation
@@ -64,8 +67,9 @@ Launch without arguments:
 MonitorBrightnessController.exe
 ```
 
-- **Monitors tab** — drag sliders or type values (0–100) to adjust brightness and gamma for each monitor; inline Profile Strip for saving, applying, updating, and deleting presets
-- **Settings tab** — configure startup profile, create desktop shortcuts, and set application behavior (transitions, tray, auto-start)
+- **Monitors tab** — drag sliders or type values (0–100) to adjust brightness and gamma for each monitor; inline Profile Strip for saving, applying, updating, and deleting presets. On first load, sliders show current monitor state (from the applied startup profile or live DDC/CI reads).
+- **Settings tab** — configure startup profile, create desktop shortcuts, and set application behavior (transitions, tray, auto-start, update checks)
+- **Help tab** — complete in-app documentation covering all features
 - **About tab** — version, build date, and project repository link
 
 ### CLI Mode
@@ -91,6 +95,15 @@ MonitorBrightnessController.exe --profile Gaming
 
 # Mix brightness-only and gamma-only across monitors
 MonitorBrightnessController.exe --monitor 1 --brightness 80 --monitor 2 --gamma 60
+
+# Start in silent mode (minimize to system tray, no window shown)
+MonitorBrightnessController.exe --silent
+
+# Combine silent mode with profile apply
+MonitorBrightnessController.exe --silent --profile Gaming
+
+# Combine silent mode with monitor commands
+MonitorBrightnessController.exe --silent --monitor 1 --brightness 70
 ```
 
 **Monitor identifiers**: use the index number (1, 2, 3...) or the monitor name (case-insensitive).
@@ -145,7 +158,8 @@ All settings are in the **Settings** tab and saved automatically to:
 | Minimize to system tray | On | Hides to tray on minimize/close instead of taskbar |
 | Smooth transitions | Off | Fades brightness and gamma gradually instead of jumping |
 | Transition duration | 500ms | Duration of smooth transitions (100–2000ms) |
-| Start with Windows | Off | Auto-launches the app on login (registry path self-heals on move) |
+| Start with Windows | Off | Auto-launches the app on login in silent mode (registry path self-heals on move) |
+| Check for updates on startup | On | Checks GitHub for newer versions when the app launches |
 | Refresh on window focus | On | Re-reads hardware brightness and gamma when the window is activated |
 | Proper Install | — | Copies the exe to Program Files and updates autostart path |
 
@@ -155,6 +169,37 @@ All settings are in the **Settings** tab and saved automatically to:
 - Double-click tray icon → restore window
 - Right-click tray icon → Restore or Exit
 - Exit saves settings and terminates the process
+
+## Silent Startup Mode
+
+Launch with `--silent` to start the application without displaying the main window:
+
+```
+MonitorBrightnessController.exe --silent
+```
+
+In silent mode:
+- The application minimizes directly to the system tray
+- The configured startup profile is applied (if enabled)
+- Double-click the tray icon to show the main window
+- If profile application fails, the error is logged and viewable when the window is opened
+
+When "Start with Windows" is enabled in Settings, the auto-start registry entry automatically includes `--silent`, so the application launches silently on login without any additional configuration.
+
+The `--silent` flag can be combined with other CLI arguments:
+- `--silent --profile Gaming` — applies the profile and enters silent mode
+- `--silent --monitor 1 --brightness 70` — sets brightness and enters silent mode
+
+## Auto-Update Notifications
+
+On each GUI launch (when enabled), the application checks GitHub for newer versions:
+- If a newer version is found, a notification banner appears at the top of the main window
+- The banner includes the new version number and a clickable link to the release page
+- The notification is non-modal and does not block any UI interaction
+- Click the dismiss button to hide the notification for the current session
+- The application never downloads or installs updates automatically
+
+Disable automatic update checks by unchecking "Check for updates on startup" in the Settings tab. Network failures or timeouts (>10 seconds) are handled silently — no error is shown to the user.
 
 ## Troubleshooting
 
@@ -199,7 +244,7 @@ All settings are in the **Settings** tab and saved automatically to:
 # Build
 dotnet build MonitorBrightnessController.sln
 
-# Run tests (155 tests including property-based tests with 100 iterations each)
+# Run tests (including property-based tests with 100 iterations each)
 dotnet test MonitorBrightnessController.sln
 
 # Publish single-file exe

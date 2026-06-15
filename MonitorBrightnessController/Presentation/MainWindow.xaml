@@ -11,6 +11,7 @@
     <Grid Margin="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -28,17 +29,66 @@
                        Foreground="#FF665C00" />
         </Border>
 
+        <!-- Update notification banner (Requirements 5.2, 5.3, 5.4) -->
+        <Border Grid.Row="1"
+                Margin="0,0,0,8"
+                Padding="10,8"
+                Background="#FFE8F4FD"
+                BorderBrush="#FF89CFF0"
+                BorderThickness="1"
+                CornerRadius="3"
+                Visibility="{Binding IsUpdateAvailable, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" VerticalAlignment="Center" TextWrapping="Wrap">
+                    <Run Text="{Binding LatestVersionText, Mode=OneWay}" Foreground="#FF1A5276" />
+                    <Run Text=" " />
+                    <Hyperlink NavigateUri="{Binding UpdateReleaseUrl}"
+                               RequestNavigate="Hyperlink_RequestNavigate">
+                        View release
+                    </Hyperlink>
+                </TextBlock>
+
+                <Button Grid.Column="1"
+                        Content="✕"
+                        Command="{Binding DismissUpdateCommand}"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        FontSize="14"
+                        FontWeight="Bold"
+                        Foreground="#FF1A5276"
+                        Cursor="Hand"
+                        VerticalAlignment="Center"
+                        Padding="6,2"
+                        ToolTip="Dismiss" />
+            </Grid>
+        </Border>
+
         <!-- Tabbed content: Monitors, Settings, About -->
-        <TabControl Grid.Row="1" SelectedIndex="0">
+        <TabControl Grid.Row="2" SelectedIndex="0">
             <!-- Tab 1: Monitor brightness controls -->
             <TabItem Header="Monitors">
                 <Grid Margin="8">
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <ScrollViewer Grid.Row="0"
+                    <!-- Header indicating source of displayed values (Requirement 3.2) -->
+                    <TextBlock Grid.Row="0"
+                               Text="{Binding MonitorsTabHeader}"
+                               FontWeight="SemiBold"
+                               FontSize="13"
+                               Foreground="#FF444444"
+                               Margin="0,0,0,8"
+                               Visibility="{Binding HasNoControllableMonitors, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+
+                    <ScrollViewer Grid.Row="1"
                                   VerticalScrollBarVisibility="Auto"
                                   Visibility="{Binding HasNoControllableMonitors, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                         <ItemsControl ItemsSource="{Binding Monitors}">
@@ -51,7 +101,7 @@
                     </ScrollViewer>
 
                     <TextBlock Text="{Binding NoMonitorsMessage}"
-                               Grid.Row="0"
+                               Grid.Row="1"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"
                                FontSize="14"
@@ -61,7 +111,7 @@
                                Visibility="{Binding HasNoControllableMonitors, Converter={StaticResource BoolToVisibilityConverter}}" />
 
                     <!-- Profile Strip below monitor controls (Requirement 3.1) -->
-                    <p:ProfileStrip x:Name="ProfileStripControl" Grid.Row="1" Margin="0,12,0,0" />
+                    <p:ProfileStrip x:Name="ProfileStripControl" Grid.Row="2" Margin="0,12,0,0" />
                 </Grid>
             </TabItem>
 
@@ -149,6 +199,10 @@
                               IsChecked="{Binding RefreshOnFocus, Mode=TwoWay}"
                               Margin="0,0,0,8" />
 
+                    <CheckBox Content="Check for updates on startup"
+                              IsChecked="{Binding CheckForUpdatesOnStartup, Mode=TwoWay}"
+                              Margin="0,0,0,8" />
+
                     <TextBlock Text="{Binding StartupProfileError}"
                                Foreground="Red"
                                TextWrapping="Wrap"
@@ -219,7 +273,12 @@
                 </StackPanel>
             </TabItem>
 
-            <!-- Tab 3: About (Req 7.1, 7.2, 7.3, 7.4, 7.6) -->
+            <!-- Tab 3: Help (Req 4.1) -->
+            <TabItem Header="Help">
+                <p:HelpTab />
+            </TabItem>
+
+            <!-- Tab 4: About (Req 7.1, 7.2, 7.3, 7.4, 7.6) -->
             <TabItem Header="About">
                 <StackPanel Margin="20" VerticalAlignment="Center" HorizontalAlignment="Center">
                     <TextBlock Text="Monitor Brightness Controller"

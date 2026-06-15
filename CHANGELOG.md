@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-06-15
+
+### Added
+
+- **Silent startup mode** — launch with `--silent` to start minimized to the system tray without showing a window; applies configured startup profile if enabled
+- **Startup registration uses `--silent`** — "Start with Windows" registry entry automatically includes `--silent` so auto-start is always silent; `EnsureRegistration` corrects mismatched values
+- **Monitors tab initial state** — on first load, sliders display current brightness/gamma values from the applied startup profile (matched monitors) or live DDC/CI reads (unmatched/no profile)
+- **Help tab** — new in-app documentation tab (after Settings, before About) with scrollable sections covering all 10 features: Monitor Brightness & Gamma Control, Profiles, Smooth Transitions, System Tray Behavior, Startup Settings, CLI Usage, Silent Startup Mode, Auto-Update Notifications, Shortcut Creation, Proper Install
+- **Auto-update notification** — on GUI startup, asynchronously checks GitHub releases for a newer version and displays a dismissible banner with a link to the release page; never downloads or installs automatically
+- **Check for updates on startup setting** — persisted boolean (`CheckForUpdatesOnStartup`, defaults to `true`) with a checkbox in the Settings tab; controls whether the update check runs on launch
+- **External documentation updated** — README and CHANGELOG cover all v1.4 features matching Help tab content
+
+### Changed
+
+- `ParsedCliArguments` extended with `Silent` property; `--silent` can appear at any position among other CLI arguments
+- `Program.Main` dispatches silent mode: creates hidden window + tray without calling `Show()`; combined with `--monitor`/`--profile` executes commands first then enters silent mode
+- `StartupRegistration.SetStartWithWindows(true)` writes `"<exePath>" --silent` format
+- `StartupRegistration.EnsureRegistration` validates and corrects registry value to include `--silent`
+- `MainWindowViewModel.Load()` populates monitor sliders from profile values or DDC/CI reads on first load
+- Settings table in README updated with "Check for updates on startup" entry
+- Version bumped to 1.4.0
+
 ## [1.3.0] - 2026-06-14
 
 ### Added

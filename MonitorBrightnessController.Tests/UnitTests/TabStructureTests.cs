@@ -26,13 +26,13 @@ public class TabStructureTests
     }
 
     /// <summary>
-    /// Requirement 4.2, 8.1: The Application SHALL display exactly 3 tabs with headers
-    /// "Monitors", "Settings", "About" in left-to-right order.
+    /// Requirement 4.2, 8.1: The Application SHALL display exactly 4 tabs with headers
+    /// "Monitors", "Settings", "Help", "About" in left-to-right order.
     /// </summary>
     [Fact]
-    public void TabControl_HasExactlyThreeTabs()
+    public void TabControl_HasExactlyFourTabs()
     {
-        _tabItems.Should().HaveCount(3);
+        _tabItems.Should().HaveCount(4);
     }
 
     /// <summary>
@@ -45,7 +45,7 @@ public class TabStructureTests
             .Select(ti => ti.Attribute("Header")?.Value)
             .ToList();
 
-        headers.Should().ContainInOrder("Monitors", "Settings", "About");
+        headers.Should().ContainInOrder("Monitors", "Settings", "Help", "About");
     }
 
     /// <summary>
@@ -62,16 +62,16 @@ public class TabStructureTests
     }
 
     /// <summary>
-    /// Requirement 8.2: The Application SHALL NOT display a "Help" tab.
+    /// Requirement 4.1: The Application SHALL display a "Help" tab.
     /// </summary>
     [Fact]
-    public void TabControl_DoesNotContainHelpTab()
+    public void TabControl_ContainsHelpTab()
     {
         var headers = _tabItems
             .Select(ti => ti.Attribute("Header")?.Value)
             .ToList();
 
-        headers.Should().NotContain("Help");
+        headers.Should().Contain("Help");
     }
 
     /// <summary>
@@ -104,12 +104,21 @@ public class TabStructureTests
     }
 
     /// <summary>
-    /// Requirement 7.1, 8.1: Third tab header is "About".
+    /// Requirement 4.1: Third tab header is "Help".
     /// </summary>
     [Fact]
-    public void ThirdTab_IsAbout()
+    public void ThirdTab_IsHelp()
     {
-        _tabItems[2].Attribute("Header")?.Value.Should().Be("About");
+        _tabItems[2].Attribute("Header")?.Value.Should().Be("Help");
+    }
+
+    /// <summary>
+    /// Requirement 7.1, 8.1: Fourth tab header is "About".
+    /// </summary>
+    [Fact]
+    public void FourthTab_IsAbout()
+    {
+        _tabItems[3].Attribute("Header")?.Value.Should().Be("About");
     }
 
     private static string FindMainWindowXaml()

@@ -31,4 +31,7 @@ public record AppSettings
 
     /// <summary>Name of the profile to apply automatically on GUI startup, or null for none.</summary>
     public string? DefaultStartupProfileName { get; init; }
+
+    /// <summary>When true, the app checks GitHub for updates on GUI startup.</summary>
+    public bool CheckForUpdatesOnStartup { get; init; } = true;
 }

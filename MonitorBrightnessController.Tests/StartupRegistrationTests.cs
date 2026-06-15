@@ -65,7 +65,7 @@ public class StartupRegistrationTests
         // Environment.ProcessPath is non-null during test execution
         if (result.IsSuccess)
         {
-            mockSubKey.Received(1).SetValue(AppName, Arg.Is<string>(v => v.StartsWith("\"") && v.EndsWith("\"")));
+            mockSubKey.Received(1).SetValue(AppName, Arg.Is<string>(v => v.StartsWith("\"") && v.EndsWith("\" --silent")));
         }
         else
         {
@@ -161,7 +161,7 @@ public class StartupRegistrationTests
         var result = _sut.UpdateRegisteredPath(newPath);
 
         result.IsSuccess.Should().BeTrue();
-        mockSubKey.Received(1).SetValue(AppName, $"\"{newPath}\"");
+        mockSubKey.Received(1).SetValue(AppName, $"\"{newPath}\" --silent");
     }
 
     [Fact]

@@ -97,8 +97,8 @@ public class AboutTabTests
             .Elements(PresentationNs + "TabItem")
             .ToList();
 
-        // About tab is the third tab
-        var aboutTab = tabItems[2];
+        // About tab is the fourth tab (after Monitors, Settings, Help)
+        var aboutTab = tabItems[3];
         aboutTab.Attribute("Header")?.Value.Should().Be("About");
 
         var hyperlink = aboutTab.Descendants(PresentationNs + "Hyperlink").First();
