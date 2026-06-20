@@ -24,9 +24,19 @@
                        Margin="0,0,0,4" />
             <TextBlock TextWrapping="Wrap" Margin="0,0,0,16">
                 Save your current brightness and gamma settings as a named profile for quick recall.
-                Use "Save As New" to create a profile, select an existing profile from the dropdown to apply it,
-                or delete profiles you no longer need. A default startup profile can be configured in Settings
-                to automatically apply when the application launches.
+                Use "Save As New" to create a profile or delete profiles you no longer need.
+                A default startup profile can be configured in Settings to automatically apply on silent launch.
+            </TextBlock>
+
+            <!-- Section: Profile Preview -->
+            <TextBlock Text="Profile Preview"
+                       FontWeight="Bold" FontSize="15"
+                       Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,16">
+                Selecting a profile from the Monitors tab dropdown previews its brightness and gamma values
+                in the sliders without sending any commands to your monitors. Click the "Apply" button to
+                send the previewed values to your hardware. Clear the dropdown selection to restore the sliders
+                to the current live hardware values. Legacy profiles without gamma data leave gamma sliders unchanged.
             </TextBlock>
 
             <!-- Section: Smooth Transitions -->
@@ -50,15 +60,28 @@
                 The application continues running in the background while minimized to tray.
             </TextBlock>
 
-            <!-- Section: Startup Settings -->
-            <TextBlock Text="Startup Settings"
+            <!-- Section: Startup Behavior -->
+            <TextBlock Text="Startup Behavior"
                        FontWeight="Bold" FontSize="15"
                        Margin="0,0,0,4" />
             <TextBlock TextWrapping="Wrap" Margin="0,0,0,16">
-                Configure the application to start automatically with Windows via the "Start with Windows"
-                option in Settings. When enabled, the application is registered in the Windows Run registry
-                and launches in silent mode on login. You can also set a default startup profile that is
-                applied automatically each time the application starts.
+                When launched manually (without flags), the application reads your monitors' current hardware
+                brightness and gamma values and displays them in the sliders. No profile is applied automatically.
+                When launched in silent mode (--silent), the application applies your configured startup profile
+                and stays minimized to the system tray. CLI flags such as --monitor or --profile override the
+                startup profile and execute only the specified command.
+            </TextBlock>
+
+            <!-- Section: Start with Windows -->
+            <TextBlock Text="Start with Windows"
+                       FontWeight="Bold" FontSize="15"
+                       Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,16">
+                Toggle "Start with Windows" in Settings to create or remove the auto-start registry entry.
+                When enabled, the application launches in silent mode on login and applies your startup profile.
+                This toggle works seamlessly with the installer's "Start with Windows" option — both manage
+                the same registry entry. If the installer created the entry, the application detects it on
+                next launch and syncs the setting automatically.
             </TextBlock>
 
             <!-- Section: CLI Usage -->
@@ -79,9 +102,10 @@
                        Margin="0,0,0,4" />
             <TextBlock TextWrapping="Wrap" Margin="0,0,0,16">
                 Launch the application with the --silent argument to start without displaying the main window.
-                The application minimizes directly to the system tray and optionally applies the configured
-                startup profile. This mode is used automatically when "Start with Windows" is enabled,
-                ensuring your desktop is not interrupted by a configuration window on login.
+                The application minimizes directly to the system tray and applies the configured startup profile
+                (either the default profile or the last-used profile). If no profile is configured, no values
+                are applied. CLI flags (--monitor, --profile) override the startup profile when combined with
+                --silent. This mode is used automatically when "Start with Windows" is enabled.
             </TextBlock>
 
             <!-- Section: Auto-Update Notifications -->
@@ -100,20 +124,21 @@
                        FontWeight="Bold" FontSize="15"
                        Margin="0,0,0,4" />
             <TextBlock TextWrapping="Wrap" Margin="0,0,0,16">
-                Create desktop or Start Menu shortcuts to the application from the Settings tab.
-                Shortcuts point to the installed application executable and can be created
-                regardless of how the application was originally launched.
+                The installer can create Start Menu and Desktop shortcuts during setup. You can also create
+                profile-specific shortcuts from within the application — these launch the app and immediately
+                apply the chosen profile, which is useful for quick-switch scenarios or taskbar pins.
             </TextBlock>
 
-            <!-- Section: Proper Install -->
-            <TextBlock Text="Proper Install"
+            <!-- Section: Installation & Updates -->
+            <TextBlock Text="Installation &amp; Updates"
                        FontWeight="Bold" FontSize="15"
                        Margin="0,0,0,4" />
             <TextBlock TextWrapping="Wrap" Margin="0,0,0,16">
-                For full functionality including Start with Windows and shortcut creation, install
-                the application to a permanent location (e.g., Program Files or AppData). Running from
-                a temporary or downloads folder may limit certain features. Use the "Install" option
-                in Settings to copy the application to the recommended location and configure it properly.
+                Monitor Brightness Controller is installed via an Inno Setup installer. The installer places
+                the application in Program Files, creates optional Start Menu and Desktop shortcuts, and can
+                configure "Start with Windows" during setup. Upgrading to a new version preserves your settings,
+                shortcuts, and startup preferences — simply run the new installer over the existing installation.
+                Uninstalling removes installed files, shortcuts, and the auto-start registry entry.
             </TextBlock>
 
         </StackPanel>

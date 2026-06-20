@@ -1,11 +1,9 @@
 using System;
-using System.Diagnostics;
 using System.Linq;
 using System.Windows;
 using MonitorBrightnessController.Application;
 using MonitorBrightnessController.Infrastructure;
 using MonitorBrightnessController.Interfaces;
-using MonitorBrightnessController.Models;
 using MonitorBrightnessController.Presentation;
 
 namespace MonitorBrightnessController;
@@ -24,9 +22,11 @@ internal static class Program
     /// <summary>
     /// Process entry point. Detects CLI invocation and either runs the CLI handler (returning
     /// its exit code) or launches the WPF application. When <c>--silent</c> is specified
-    /// without CLI commands, the GUI starts hidden with only the system tray icon visible.
-    /// When <c>--silent</c> is combined with CLI commands, the commands execute first, then
-    /// the application enters silent mode.
+    /// without CLI commands, the GUI starts hidden with only the system tray icon visible and
+    /// applies the startup profile. When <c>--silent</c> is combined with CLI commands, the
+    /// commands execute first, then the application enters silent mode without auto-apply.
+    /// Manual launches (no <c>--silent</c>, no CLI commands) display hardware values only
+    /// without applying any profile (Requirements 1.2, 1.3).
     /// </summary>
     /// <param name="args">The raw command-line arguments.</param>
     /// <returns>The process exit code (0 for GUI, CLI handler's code for CLI mode).</returns>
@@ -53,33 +53,32 @@ internal static class Program
         }
 
         // Combined mode (--monitor/--profile WITH --silent): execute CLI commands first,
-        // then enter silent mode (Requirements 1.7).
+        // then enter silent mode without auto-apply (Requirement 2.9).
         if (hasCliCommands && hasSilent)
         {
             var normalizedArgs = NormalizeArgs(args);
             ICliHandler cliHandler = new CliHandler(monitorService, profileManager);
             int cliResult = cliHandler.Execute(normalizedArgs);
 
-            // Regardless of CLI result, enter silent mode with hidden window + tray.
+            // CLI override: enter silent mode with hidden window + tray, skip auto-apply.
             return RunSilentMode(monitorService, settingsStore, profileManager, skipAutoApply: true, CreateUpdateChecker());
         }
 
-        // Silent mode (--silent only, no CLI commands): start hidden with tray icon
-        // (Requirements 1.1, 1.2, 1.3, 1.5, 1.6).
+        // Silent mode (--silent only, no CLI commands): start hidden with tray icon and
+        // apply the startup profile (Requirements 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8).
         if (hasSilent)
         {
             return RunSilentMode(monitorService, settingsStore, profileManager, skipAutoApply: false, CreateUpdateChecker());
         }
 
-        // GUI mode: start the WPF application with the main window. The settings store and
-        // profile manager are passed through so the window can perform startup auto-apply
-        // and persist the auto-apply toggle (Requirements 5.2, 5.3, 5.4, 5.6, 5.7).
-        // Wire the update checker for auto-update notification on GUI startup.
+        // Manual launch (no --silent, no CLI commands): start the WPF application with the
+        // main window visible. Read hardware values only — do NOT invoke
+        // StartupCoordinator.Run() or apply any profile (Requirements 1.2, 1.3).
         IUpdateChecker updateChecker = CreateUpdateChecker();
 
         var app = new App();
         app.InitializeComponent();
-        var window = new MainWindow(monitorService, settingsStore, profileManager, updateChecker);
+        var window = new MainWindow(monitorService, settingsStore, profileManager, updateChecker, skipAutoApply: true);
         app.Run(window);
         return 0;
     }
@@ -100,15 +99,28 @@ internal static class Program
 
     /// <summary>
     /// Starts the application in silent mode: creates the WPF App and MainWindow but does not
-    /// show the window. The window's Visibility is set to Collapsed and the system tray icon
-    /// is initialized immediately. Optionally applies the startup profile before entering
-    /// silent mode.
+    /// show the window. The window starts hidden (Collapsed) with the system tray icon visible
+    /// and no taskbar entry (Requirement 2.7). Startup profile logic is delegated to
+    /// <see cref="StartupCoordinator"/> via the <see cref="MainWindowViewModel"/> constructor
+    /// when <paramref name="skipAutoApply"/> is false.
     /// </summary>
+    /// <remarks>
+    /// On <see cref="StartupAction.ApplyDefaultProfile"/> or <see cref="StartupAction.ApplyLastProfile"/>:
+    /// the <see cref="StartupCoordinator.Run"/> method invokes <see cref="IProfileManager.ApplyProfile"/>
+    /// (Requirement 2.1). On failure, the coordinator logs via Trace and stores a user-facing notice
+    /// in <see cref="MainWindowViewModel.StartupNotice"/> for display when the window is next shown
+    /// (Requirement 2.6). The application remains running in the system tray (Requirement 2.7).
+    ///
+    /// On <see cref="StartupAction.DefaultProfileMissing"/>: the coordinator resets
+    /// <c>DefaultStartupProfileName</c> to null, persists the change, and does not apply
+    /// (Requirement 2.8).
+    /// </remarks>
     /// <param name="monitorService">The monitor service for brightness operations.</param>
     /// <param name="settingsStore">The settings store for loading preferences.</param>
     /// <param name="profileManager">The profile manager for applying startup profiles.</param>
     /// <param name="skipAutoApply">
-    /// When true, skips the startup profile auto-apply (used when CLI commands already executed).
+    /// When true, skips the startup profile auto-apply (used when CLI commands already executed,
+    /// i.e. CLI override per Requirement 2.9).
     /// </param>
     /// <param name="updateChecker">
     /// Optional update checker passed through to MainWindow so the update check can run when
@@ -122,47 +134,21 @@ internal static class Program
         bool skipAutoApply,
         IUpdateChecker? updateChecker = null)
     {
-        // Optionally apply the startup profile (Requirements 1.2, 1.6).
-        if (!skipAutoApply)
-        {
-            try
-            {
-                AppSettings settings = settingsStore.Load();
-
-                if (settings.AutoApplyOnStartup)
-                {
-                    string? profileToApply = settings.DefaultStartupProfileName
-                        ?? settings.LastAppliedProfileName;
-
-                    if (!string.IsNullOrEmpty(profileToApply))
-                    {
-                        Result<Unit> applyResult = profileManager.ApplyProfile(profileToApply, monitorService);
-                        if (!applyResult.IsSuccess)
-                        {
-                            // Requirement 1.6: remain in tray, log error for later viewing.
-                            Trace.TraceWarning(
-                                $"Silent mode: failed to apply startup profile '{profileToApply}': {applyResult.Error}");
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                // Requirement 1.6: handle any failure gracefully — remain in tray.
-                Trace.TraceWarning($"Silent mode: startup profile auto-apply failed: {ex.Message}");
-            }
-        }
-
-        // Create the WPF application and main window, but do not show the window.
+        // Create the WPF application and main window. The MainWindowViewModel constructor
+        // handles startup profile logic via StartupCoordinator when skipAutoApply is false
+        // (Requirements 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8).
+        // When skipAutoApply is true (CLI override, Requirement 2.9), StartupCoordinator
+        // is still invoked but returns CliOverride, skipping profile application.
         var app = new App();
         app.InitializeComponent();
-        var window = new MainWindow(monitorService, settingsStore, profileManager, updateChecker);
+        var window = new MainWindow(monitorService, settingsStore, profileManager, updateChecker, skipAutoApply: skipAutoApply);
 
-        // Set window to Collapsed so it is not visible (Requirement 1.1).
+        // Requirement 2.7: Start with main window hidden, no taskbar entry.
         window.Visibility = Visibility.Collapsed;
+        window.ShowInTaskbar = false;
 
-        // Initialize the system tray immediately so the user sees the icon (Requirement 1.3).
-        // The SystemTrayManager's double-click handler will restore the window (Requirement 1.5).
+        // Initialize the system tray immediately so the user sees the icon (Requirement 2.7).
+        // The SystemTrayManager's double-click handler will restore the window when activated.
         var trayManager = new SystemTrayManager(window, saveState: null);
 
         app.Run(window);

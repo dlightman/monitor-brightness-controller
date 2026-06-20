@@ -24,9 +24,9 @@
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
 
     <!-- Versioning (shown in file Properties → Details) -->
-    <Version>1.4.0</Version>
-    <AssemblyVersion>1.4.0.0</AssemblyVersion>
-    <FileVersion>1.4.0.0</FileVersion>
+    <Version>1.5.0</Version>
+    <AssemblyVersion>1.5.0.0</AssemblyVersion>
+    <FileVersion>1.5.0.0</FileVersion>
 
     <!-- Build date for About tab (Requirements 7.4, 7.5, 7.6) -->
     <BuildDate>$([System.DateTime]::UtcNow.ToString("yyyy-MM-dd"))</BuildDate>

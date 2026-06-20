@@ -81,10 +81,10 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Creates the main window view model with full startup wiring. Loads settings, runs the
-    /// startup auto-apply coordination (Requirements 5.3, 5.4, 5.6, 5.7), seeds the auto-apply
-    /// toggle from the loaded settings (Requirement 5.2), and then detects monitors so their
-    /// current brightness values are reflected in the UI.
+    /// Creates the main window view model with full startup wiring. Loads settings, optionally
+    /// runs the startup auto-apply coordination (Requirements 5.3, 5.4, 5.6, 5.7), seeds the
+    /// auto-apply toggle from the loaded settings (Requirement 5.2), and then detects monitors
+    /// so their current brightness values are reflected in the UI.
     /// </summary>
     /// <param name="monitorService">The monitor service used to detect monitors and apply brightness.</param>
     /// <param name="settingsStore">The settings store used to load and persist preferences.</param>
@@ -92,13 +92,19 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <param name="startupRegistration">Optional startup registration for managing auto-start with Windows.</param>
     /// <param name="applicationInstaller">Optional installer for copying the app to Program Files.</param>
     /// <param name="updateChecker">Optional update checker for querying GitHub releases on startup.</param>
+    /// <param name="skipAutoApply">
+    /// When true, skips StartupCoordinator.Run() and profile auto-apply entirely. Used for
+    /// manual launches (no --silent flag) where the UI should display hardware values only
+    /// without applying any profile (Requirements 1.2, 1.3).
+    /// </param>
     public MainWindowViewModel(
         IMonitorService monitorService,
         ISettingsStore settingsStore,
         IProfileManager profileManager,
         IStartupRegistration? startupRegistration = null,
         IApplicationInstaller? applicationInstaller = null,
-        IUpdateChecker? updateChecker = null)
+        IUpdateChecker? updateChecker = null,
+        bool skipAutoApply = false)
     {
         _monitorService = monitorService ?? throw new ArgumentNullException(nameof(monitorService));
         _settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
@@ -136,41 +142,51 @@ public sealed class MainWindowViewModel : ViewModelBase
         _selectedStartupProfileName = loadedSettings.DefaultStartupProfileName ?? "Last Used";
         RefreshStartupProfileDropdown();
 
-        // Perform startup auto-apply coordination before reading current values
-        // (Requirements 5.3, 5.4, 5.6, 5.7). Any notice is surfaced in the GUI.
-        var coordinator = new StartupCoordinator(_settingsStore, _profileManager, _monitorService, _startupRegistration);
-
-        // Determine the startup decision to know which profile (if any) was targeted
-        IReadOnlyList<string> profileNames = _profileManager.GetAllProfiles()
-            .Select(p => p.Name)
-            .ToList();
-        var decision = StartupCoordinator.Decide(loadedSettings, profileNames);
-
-        _startupNotice = coordinator.Run();
-
-        // Detect monitors so the UI shows current brightness values (read without modifying
-        // when auto-apply is disabled or the last profile was missing).
-        Load();
-
-        // Startup slider synchronization (Requirements 1.1, 1.2, 1.3, 1.4):
-        // - When no startup profile applies (Req 1.1): sliders already show hardware-reported
-        //   values from Load(). DDC/CI failures default to midpoint (50) in MonitorControlViewModel.
-        // - When startup profile was applied successfully (Req 1.2): preview the profile values
-        //   on mapped monitors. Unmapped monitors retain their hardware-reported values.
-        // - When startup profile application fails (Req 1.3): _startupNotice is non-null,
-        //   sliders fall back to hardware-reported values (already set by Load()).
-        bool profileAppliedSuccessfully = _startupNotice is null &&
-            (decision.Action == StartupAction.ApplyDefaultProfile ||
-             decision.Action == StartupAction.ApplyLastProfile);
-
-        if (profileAppliedSuccessfully && !string.IsNullOrEmpty(decision.ProfileName))
+        if (skipAutoApply)
         {
-            PreviewProfile(decision.ProfileName);
-            MonitorsTabHeader = $"Profile: {decision.ProfileName}";
+            // Manual launch path (Requirements 1.2, 1.3): read hardware values only,
+            // no StartupCoordinator.Run(), no profile application, no profile selected.
+            Load();
+            MonitorsTabHeader = "Current Settings";
         }
         else
         {
-            MonitorsTabHeader = "Current Settings";
+            // Silent/auto-apply launch path: perform startup auto-apply coordination
+            // (Requirements 5.3, 5.4, 5.6, 5.7). Any notice is surfaced in the GUI.
+            var coordinator = new StartupCoordinator(_settingsStore, _profileManager, _monitorService, _startupRegistration);
+
+            // Determine the startup decision to know which profile (if any) was targeted
+            IReadOnlyList<string> profileNames = _profileManager.GetAllProfiles()
+                .Select(p => p.Name)
+                .ToList();
+            var decision = StartupCoordinator.Decide(loadedSettings, profileNames);
+
+            _startupNotice = coordinator.Run();
+
+            // Detect monitors so the UI shows current brightness values (read without modifying
+            // when auto-apply is disabled or the last profile was missing).
+            Load();
+
+            // Startup slider synchronization (Requirements 1.1, 1.2, 1.3, 1.4):
+            // - When no startup profile applies (Req 1.1): sliders already show hardware-reported
+            //   values from Load(). DDC/CI failures default to midpoint (50) in MonitorControlViewModel.
+            // - When startup profile was applied successfully (Req 1.2): preview the profile values
+            //   on mapped monitors. Unmapped monitors retain their hardware-reported values.
+            // - When startup profile application fails (Req 1.3): _startupNotice is non-null,
+            //   sliders fall back to hardware-reported values (already set by Load()).
+            bool profileAppliedSuccessfully = _startupNotice is null &&
+                (decision.Action == StartupAction.ApplyDefaultProfile ||
+                 decision.Action == StartupAction.ApplyLastProfile);
+
+            if (profileAppliedSuccessfully && !string.IsNullOrEmpty(decision.ProfileName))
+            {
+                PreviewProfile(decision.ProfileName);
+                MonitorsTabHeader = $"Profile: {decision.ProfileName}";
+            }
+            else
+            {
+                MonitorsTabHeader = "Current Settings";
+            }
         }
 
         // Fire-and-forget update check (Requirement 5.1, 5.7)
@@ -311,8 +327,17 @@ public sealed class MainWindowViewModel : ViewModelBase
             _startWithWindows = value;
             OnPropertyChanged();
 
-            _startupRegistration?.SetStartWithWindows(value);
+            // Requirement 3.4: Persist the StartWithWindows boolean in SettingsStore
+            // independently of whether the registry operation succeeds or fails.
             PersistSetting(s => s with { StartWithWindows = value });
+
+            // Attempt registry update; on failure, display error but do NOT revert (Requirement 3.6).
+            var registryResult = _startupRegistration?.SetStartWithWindows(value);
+            if (registryResult.HasValue && !registryResult.Value.IsSuccess)
+            {
+                StartupNotice = registryResult.Value.Error
+                    ?? "The registry could not be updated. The setting has been saved but may not take effect until the registry is accessible.";
+            }
         }
     }
 
@@ -877,17 +902,26 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// Restores each monitor's sliders to the current hardware-reported brightness and gamma values.
     /// Called when the profile dropdown selection is cleared (deselected). For monitors where the
     /// hardware read succeeds, the slider is updated to the hardware value. For monitors where the
-    /// read fails, the last displayed value is retained.
+    /// read fails, the last displayed value is retained and an error message is shown
+    /// (Requirement 4.6).
     /// </summary>
-    /// <remarks>Requirements 2.4, 2.5</remarks>
+    /// <remarks>Requirements 4.5, 4.6</remarks>
     public void RestoreHardwareValues()
     {
+        var failedMonitors = new List<string>();
+
         foreach (var monitor in Monitors)
         {
+            bool monitorFailed = false;
+
             var brightnessResult = _monitorService.GetBrightness(monitor.MonitorIndex);
             if (brightnessResult.IsSuccess)
             {
                 monitor.Brightness = brightnessResult.Value;
+            }
+            else
+            {
+                monitorFailed = true;
             }
 
             var gammaResult = _monitorService.GetGamma(monitor.MonitorIndex);
@@ -895,6 +929,21 @@ public sealed class MainWindowViewModel : ViewModelBase
             {
                 monitor.Gamma = gammaResult.Value;
             }
+            else
+            {
+                monitorFailed = true;
+            }
+
+            if (monitorFailed)
+            {
+                failedMonitors.Add(monitor.MonitorName);
+            }
+        }
+
+        // Requirement 4.6: display an error message indicating which monitors could not be read
+        if (failedMonitors.Count > 0)
+        {
+            StartupNotice = $"Could not read hardware values for: {string.Join(", ", failedMonitors)}. Sliders remain at their last displayed position.";
         }
     }
 
@@ -902,13 +951,13 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// Previews a profile's brightness and gamma values on the monitor sliders without applying
     /// to hardware. For each monitor present in the profile's maps, the corresponding slider is
     /// updated; monitors not in the maps retain their current displayed values.
-    /// Legacy profiles (null MonitorGammaMap) leave gamma sliders unchanged.
+    /// Legacy profiles (null MonitorGammaMap) leave gamma sliders unchanged (Requirement 4.3).
     /// </summary>
     /// <param name="profileName">
     /// The name of the profile to preview. If null or empty, the method returns immediately
     /// (deselection is handled by <see cref="RestoreHardwareValues"/>).
     /// </param>
-    /// <remarks>Requirements 2.1, 2.2, 2.3</remarks>
+    /// <remarks>Requirements 4.1, 4.2, 4.3</remarks>
     public void PreviewProfile(string? profileName)
     {
         if (string.IsNullOrEmpty(profileName))

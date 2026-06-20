@@ -5,6 +5,7 @@ using FsCheck;
 using FsCheck.Xunit;
 using MonitorBrightnessController.Infrastructure;
 using MonitorBrightnessController.Interfaces;
+using MonitorBrightnessController.Models;
 using NSubstitute;
 
 namespace MonitorBrightnessController.Tests.Properties;
@@ -232,13 +233,15 @@ public class EnsureRegistrationProperties
     ///
     /// For any combination of (current executable path, existing registry value or absence thereof,
     /// StartWithWindows enabled/disabled), EnsureRegistration SHALL:
-    /// - Do nothing when StartWithWindows is disabled
+    /// - When StartWithWindows is disabled and no registry entry exists: return success with no sync needed
+    /// - When StartWithWindows is disabled and a registry entry exists: return success with SettingsNeedSync=true
+    ///   and update the path if it differs (Requirement 7.2, 7.4)
     /// - Create the quoted current path when the entry is missing and StartWithWindows is enabled
     /// - Update to the quoted current path when the entry differs case-insensitively
     /// - Leave the entry unchanged when it already matches case-insensitively
     /// </summary>
     /// <remarks>
-    /// **Validates: Requirements 1.4, 5.1, 5.2, 5.4**
+    /// **Validates: Requirements 1.4, 5.1, 5.2, 5.4, 7.2, 7.4**
     /// </remarks>
     [Property(MaxTest = 100)]
     public Property EnsureRegistration_Reconciles_Correctly()
@@ -252,6 +255,9 @@ public class EnsureRegistrationProperties
             var registryRoot = Substitute.For<IRegistryKeyWrapper>();
             var runKeyMock = Substitute.For<IRegistryKeyWrapper>();
 
+            // Setup read-only key for disabled path
+            registryRoot.OpenSubKey(RunKey, writable: false).Returns(runKeyMock);
+            // Setup writable key for enabled path and disabled path update
             registryRoot.OpenSubKey(RunKey, writable: true).Returns(runKeyMock);
             runKeyMock.GetValue(AppName).Returns(existingValue);
 
@@ -268,28 +274,53 @@ public class EnsureRegistrationProperties
             var result = sut.EnsureRegistration(enabled);
 
             // Assert
+            result.IsSuccess.Should().BeTrue("EnsureRegistration should succeed in all test scenarios");
+
             if (!enabled)
             {
-                // When disabled: returns success, does NOT open the registry key
-                result.IsSuccess.Should().BeTrue("EnsureRegistration should succeed immediately when disabled");
-                registryRoot.DidNotReceive().OpenSubKey(Arg.Any<string>(), Arg.Any<bool>());
+                // Requirement 7.2: When disabled, check for external registry entry
+                if (existingValue is null)
+                {
+                    // No external entry — no sync needed
+                    result.Value.SettingsNeedSync.Should().BeFalse("no external entry means no sync needed");
+                    result.Value.PathWasUpdated.Should().BeFalse();
+                }
+                else
+                {
+                    // External entry detected — signal sync needed
+                    result.Value.SettingsNeedSync.Should().BeTrue("external entry found, settings should sync to true");
+                    bool pathMatches = string.Equals(existingValue, expectedQuotedPath, StringComparison.OrdinalIgnoreCase);
+                    if (pathMatches)
+                    {
+                        result.Value.PathWasUpdated.Should().BeFalse("path already matches, no update needed");
+                    }
+                    else
+                    {
+                        // Requirement 7.4: Path differs, should update
+                        result.Value.PathWasUpdated.Should().BeTrue("path differs, should be updated");
+                        runKeyMock.Received().SetValue(AppName, expectedQuotedPath);
+                    }
+                }
             }
             else if (existingValue is null)
             {
                 // When enabled + missing: should create the entry with quoted path + --silent
-                result.IsSuccess.Should().BeTrue("EnsureRegistration should succeed when creating a missing entry");
+                result.Value.SettingsNeedSync.Should().BeFalse();
+                result.Value.PathWasUpdated.Should().BeTrue("entry was missing and had to be created");
                 runKeyMock.Received(1).SetValue(AppName, expectedQuotedPath);
             }
             else if (string.Equals(existingValue, expectedQuotedPath, StringComparison.OrdinalIgnoreCase))
             {
                 // When enabled + matches (case-insensitive): should NOT call SetValue
-                result.IsSuccess.Should().BeTrue("EnsureRegistration should succeed when entry already matches");
+                result.Value.SettingsNeedSync.Should().BeFalse();
+                result.Value.PathWasUpdated.Should().BeFalse("entry already matches, no update needed");
                 runKeyMock.DidNotReceive().SetValue(Arg.Any<string>(), Arg.Any<object>());
             }
             else
             {
                 // When enabled + differs: should update with quoted path + --silent
-                result.IsSuccess.Should().BeTrue("EnsureRegistration should succeed when updating a mismatched entry");
+                result.Value.SettingsNeedSync.Should().BeFalse();
+                result.Value.PathWasUpdated.Should().BeTrue("entry differs, should be updated");
                 runKeyMock.Received(1).SetValue(AppName, expectedQuotedPath);
             }
         });

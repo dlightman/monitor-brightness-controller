@@ -2,7 +2,7 @@
 
 A lightweight Windows 11 desktop application that controls external monitor brightness and gamma via DDC/CI. Provides a graphical interface with per-monitor sliders and a command-line interface for automation and keyboard shortcuts.
 
-Built with C# / .NET 8 / WPF. Distributed as a single executable.
+Built with C# / .NET 8 / WPF. Distributed via an Inno Setup installer.
 
 ![Monitors Tab](docs/screenshots/monitors-tab.png?v=2)
 
@@ -11,20 +11,20 @@ Built with C# / .NET 8 / WPF. Distributed as a single executable.
 - **Per-monitor brightness control** — individual sliders for each DDC/CI-capable external monitor
 - **Per-monitor gamma control** — adjust gamma (VCP code 0x12) alongside brightness for each monitor
 - **Named profiles** — save, apply, update, and delete brightness and gamma presets (e.g. "Gaming", "Working")
+- **Profile preview** — selecting a profile from the dropdown previews values in the sliders without sending commands to monitors; click "Apply" to commit to hardware
 - **Backward-compatible profiles** — existing brightness-only profiles continue to work without modification
 - **CLI mode** — set brightness, gamma, or apply profiles via command-line arguments (no GUI shown)
-- **Silent startup mode** — launch with `--silent` to start minimized to the system tray without showing a window
+- **Silent startup mode** — launch with `--silent` to start minimized to the system tray and auto-apply your configured startup profile
+- **Manual launch shows live values** — launching without `--silent` reads and displays your monitors' current hardware brightness and gamma without changing anything
 - **Auto-update notifications** — checks GitHub for newer versions on startup and shows a dismissible notification
 - **In-app Help tab** — complete documentation of all features accessible without leaving the application
 - **Windows shortcut creation** — generate desktop shortcuts for any saved profile (Settings tab)
 - **System tray** — optional minimize-to-tray with double-click restore and context menu
 - **Smooth transitions** — optional animated brightness and gamma fade between values (independent per setting per monitor)
-- **Start with Windows** — optional auto-launch on login (now launches in silent mode automatically)
-- **Startup registry self-healing** — autostart path auto-corrects if the exe is moved
-- **Unified startup profile** — choose "Last Used" or a specific profile to apply on every GUI launch
-- **Proper Install** — one-click copy to Program Files with UAC elevation
+- **Start with Windows** — optional auto-launch on login in silent mode; registry entry syncs with the installer and auto-corrects if the exe is moved
+- **Unified startup profile** — choose "Last Used" or a specific profile to apply on silent launch
+- **Inno Setup installer** — proper Windows installer with upgrade support, Start Menu/Desktop shortcuts, and optional "Start with Windows" configuration
 - **Refresh on focus** — re-reads hardware brightness and gamma when the window regains focus
-- **Single-file exe** — one portable file, runs from any location
 
 ## Screenshots
 
@@ -40,15 +40,28 @@ Built with C# / .NET 8 / WPF. Distributed as a single executable.
 
 ## Installation
 
-### Download
+### Installer (Recommended)
 
-Download the latest `MonitorBrightnessController.exe` from [Releases](../../releases) and place it anywhere on your system.
+Download the latest `MonitorBrightnessControllerSetup-{version}.exe` from [Releases](../../releases) and run it. The installer will:
+
+- Install to Program Files (or a custom directory you choose)
+- Optionally create Start Menu and Desktop shortcuts
+- Optionally configure "Start with Windows" (auto-launch in silent mode on login)
+- Register an uninstaller in Programs and Features
+
+Upgrading is handled automatically — run the new installer and it will detect the previous installation, preserve your settings, and replace the application files.
 
 ### Build from source
 
 ```bash
 git clone https://github.com/dlightman/monitor-brightness-controller.git
 cd monitor-brightness-controller
+.\publish.ps1
+```
+
+Or manually:
+
+```bash
 dotnet publish MonitorBrightnessController/MonitorBrightnessController.csproj -c Release
 ```
 
@@ -56,6 +69,8 @@ The single executable is produced at:
 ```
 MonitorBrightnessController/bin/Release/net8.0-windows/win-x64/publish/MonitorBrightnessController.exe
 ```
+
+The `publish.ps1` script also invokes the Inno Setup compiler to produce the installer in `builds/v{VERSION}/`.
 
 ## Usage
 
@@ -67,10 +82,12 @@ Launch without arguments:
 MonitorBrightnessController.exe
 ```
 
-- **Monitors tab** — drag sliders or type values (0–100) to adjust brightness and gamma for each monitor; inline Profile Strip for saving, applying, updating, and deleting presets. On first load, sliders show current monitor state (from the applied startup profile or live DDC/CI reads).
+- **Monitors tab** — drag sliders or type values (0–100) to adjust brightness and gamma for each monitor; inline Profile Strip for saving, applying, updating, and deleting presets. Selecting a profile from the dropdown previews the values in the sliders without changing your monitors — click "Apply" to send the values to hardware. Clearing the selection restores sliders to your monitors' current live values.
 - **Settings tab** — configure startup profile, create desktop shortcuts, and set application behavior (transitions, tray, auto-start, update checks)
 - **Help tab** — complete in-app documentation covering all features
 - **About tab** — version, build date, and project repository link
+
+On manual launch (no `--silent`), sliders show your monitors' current hardware-reported brightness and gamma. No profile is applied and no values are sent to hardware until you explicitly click "Apply".
 
 ### CLI Mode
 
@@ -153,15 +170,14 @@ All settings are in the **Settings** tab and saved automatically to:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Auto apply profile on start | Off | Applies a profile automatically when the app launches |
-| Startup profile | Last Used | Which profile to apply on startup ("Last Used" or a specific profile) |
+| Auto apply profile on start | Off | Applies a profile automatically on silent launch (`--silent`) |
+| Startup profile | Last Used | Which profile to apply on silent launch ("Last Used" or a specific profile) |
 | Minimize to system tray | On | Hides to tray on minimize/close instead of taskbar |
 | Smooth transitions | Off | Fades brightness and gamma gradually instead of jumping |
 | Transition duration | 500ms | Duration of smooth transitions (100–2000ms) |
-| Start with Windows | Off | Auto-launches the app on login in silent mode (registry path self-heals on move) |
+| Start with Windows | Off | Auto-launches the app on login in silent mode (syncs with installer, registry path auto-corrects on move) |
 | Check for updates on startup | On | Checks GitHub for newer versions when the app launches |
 | Refresh on window focus | On | Re-reads hardware brightness and gamma when the window is activated |
-| Proper Install | — | Copies the exe to Program Files and updates autostart path |
 
 ## System Tray (when enabled)
 
@@ -179,16 +195,20 @@ MonitorBrightnessController.exe --silent
 ```
 
 In silent mode:
-- The application minimizes directly to the system tray
-- The configured startup profile is applied (if enabled)
+- The application minimizes directly to the system tray (no taskbar entry)
+- The configured startup profile is applied automatically (if enabled):
+  - Uses `DefaultStartupProfileName` if set, otherwise falls back to `LastAppliedProfileName`
+  - If the configured profile no longer exists, the setting is reset to "Last Used" behavior
 - Double-click the tray icon to show the main window
-- If profile application fails, the error is logged and viewable when the window is opened
+- If profile application fails, the error is logged and a notice is shown when the window is next opened
 
-When "Start with Windows" is enabled in Settings, the auto-start registry entry automatically includes `--silent`, so the application launches silently on login without any additional configuration.
+When "Start with Windows" is enabled (via Settings or the installer), the auto-start registry entry includes `--silent`, so the application launches silently on login without additional configuration.
 
 The `--silent` flag can be combined with other CLI arguments:
 - `--silent --profile Gaming` — applies the profile and enters silent mode
 - `--silent --monitor 1 --brightness 70` — sets brightness and enters silent mode
+
+> **Note**: If `--monitor` or `--profile` CLI flags are provided alongside `--silent`, they take precedence — the startup profile auto-apply is skipped and only the explicit CLI command is executed.
 
 ## Auto-Update Notifications
 
@@ -225,17 +245,19 @@ Disable automatic update checks by unchecking "Check for updates on startup" in 
 ## Project Structure
 
 ```
-├── MonitorBrightnessController/        # Main WPF application
-│   ├── Application/                    # Business logic (MonitorService, ProfileManager, CliHandler, TransitionRunner)
-│   ├── Infrastructure/                 # DDC/CI interop, settings persistence, startup registration
-│   ├── Interfaces/                     # Service interfaces
-│   ├── Models/                         # Data models (MonitorState, Profile, AppSettings, Result<T>)
-│   ├── Presentation/                   # WPF views, view models, system tray
-│   └── Assets/                         # Application icon
-├── MonitorBrightnessController.Tests/  # xUnit + FsCheck property-based tests
-├── tools/                              # Icon generation tool
-├── docs/screenshots/                   # Application screenshots
-└── MonitorBrightnessController.sln     # Solution file
+├── MonitorBrightnessControllerSetup.iss  # Inno Setup installer script
+├── publish.ps1                           # Build + installer pipeline script
+├── MonitorBrightnessController/          # Main WPF application
+│   ├── Application/                      # Business logic (MonitorService, ProfileManager, CliHandler, TransitionRunner)
+│   ├── Infrastructure/                   # DDC/CI interop, settings persistence, startup registration
+│   ├── Interfaces/                       # Service interfaces
+│   ├── Models/                           # Data models (MonitorState, Profile, AppSettings, Result<T>)
+│   ├── Presentation/                     # WPF views, view models, system tray
+│   └── Assets/                           # Application icon
+├── MonitorBrightnessController.Tests/    # xUnit + FsCheck property-based tests
+├── tools/                                # Icon generation tool
+├── docs/screenshots/                     # Application screenshots
+└── MonitorBrightnessController.sln       # Solution file
 ```
 
 ## Development
@@ -249,9 +271,12 @@ dotnet test MonitorBrightnessController.sln
 
 # Publish single-file exe
 dotnet publish MonitorBrightnessController/MonitorBrightnessController.csproj -c Release
+
+# Full build + installer (requires Inno Setup installed)
+.\publish.ps1
 ```
 
-Requires only the .NET 8 SDK. No Visual Studio or additional tools needed.
+Requires the .NET 8 SDK. Building the installer additionally requires [Inno Setup](https://jrsoftware.org/isinfo.php) (ISCC.exe must be on PATH or at the default install location).
 
 ## License
 

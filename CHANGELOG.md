@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-06-20
+
+### Fixed
+
+- **Manual launch no longer applies startup profiles** — launching the app without `--silent` now reads and displays current hardware brightness/gamma values only, with no profile auto-apply (Req 1)
+- **Silent launch correctly prioritizes DefaultStartupProfileName over LastAppliedProfileName** — startup decision logic now properly falls back to LastAppliedProfileName only when DefaultStartupProfileName is null/empty, and resets missing default profiles gracefully (Req 2)
+- **"Start with Windows" registry management** — syncs externally-created entries (e.g., from installer), overwrites registry value when exe path changes, and tolerates missing entries on disable without error (Req 3)
+- **Profile selection now previews values without applying to hardware** — selecting a profile from the Monitors tab dropdown loads brightness/gamma into sliders as a preview; an explicit "Apply" click is required to send values to monitors (Req 4)
+
+### Added
+
+- **Inno Setup installer** — full Windows installer with configurable install directory, Start Menu and Desktop shortcut options, "Start with Windows" checkbox, uninstaller registration, and upgrade support that preserves user settings (Req 5, 6)
+- **Installer/app registry integration** — the installer and the in-app "Start with Windows" toggle share the same registry key and format, with the app detecting and syncing externally-created entries on startup (Req 7)
+- **Build pipeline ISCC.exe integration** — `publish.ps1` now invokes the Inno Setup compiler after `dotnet publish` to produce a versioned installer executable automatically (Req 9)
+- **publish.ps1 build script** — PowerShell script that orchestrates dotnet publish, Inno Setup compilation, and build output cleanup in a single command
+
+### Changed
+
+- **Distribution model changed to installer-only** — the build process now produces an Inno Setup installer as the sole distribution artifact; raw standalone executables are no longer placed in the builds folder (Req 8)
+- **Registry entry management improved for installer compatibility** — startup path comparison on launch updates the registry entry when paths differ, and write failures are surfaced to the user without reverting settings (Req 7)
+
 ## [1.4.0] - 2026-06-15
 
 ### Added

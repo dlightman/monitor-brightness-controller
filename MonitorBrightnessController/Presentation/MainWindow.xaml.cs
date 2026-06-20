@@ -35,10 +35,11 @@ public partial class MainWindow : Window
         IMonitorService monitorService,
         ISettingsStore settingsStore,
         IProfileManager profileManager,
-        IUpdateChecker? updateChecker = null)
+        IUpdateChecker? updateChecker = null,
+        bool skipAutoApply = false)
     {
         InitializeComponent();
-        Setup(monitorService, settingsStore, profileManager, updateChecker);
+        Setup(monitorService, settingsStore, profileManager, updateChecker, skipAutoApply);
     }
 
     public MainWindow()
@@ -46,14 +47,14 @@ public partial class MainWindow : Window
     {
     }
 
-    private void Setup(IMonitorService monitorService, ISettingsStore settingsStore, IProfileManager profileManager, IUpdateChecker? updateChecker)
+    private void Setup(IMonitorService monitorService, ISettingsStore settingsStore, IProfileManager profileManager, IUpdateChecker? updateChecker, bool skipAutoApply = false)
     {
         // Wire real implementations for startup registration and install (Requirements 1.4, 5.1, 5.2, 5.4)
         var registryWrapper = new RegistryKeyWrapper(Registry.CurrentUser);
         var startupRegistration = new StartupRegistration(registryWrapper);
         var applicationInstaller = new ApplicationInstaller();
 
-        _viewModel = new MainWindowViewModel(monitorService, settingsStore, profileManager, startupRegistration, applicationInstaller, updateChecker);
+        _viewModel = new MainWindowViewModel(monitorService, settingsStore, profileManager, startupRegistration, applicationInstaller, updateChecker, skipAutoApply);
         DataContext = _viewModel;
 
         // Wire shortcut creation delegate (Requirements 5.3, 5.4, 5.6, 5.7)

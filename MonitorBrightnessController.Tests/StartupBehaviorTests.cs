@@ -355,7 +355,7 @@ public class StartupBehaviorTests
         IProfileManager profileManager = ProfileManagerWith();
         IStartupRegistration startupReg = Substitute.For<IStartupRegistration>();
         startupReg.EnsureRegistration(Arg.Any<bool>())
-            .Returns(Result<MbcUnit>.Success(MbcUnit.Value));
+            .Returns(Result<RegistrySyncResult>.Success(new RegistrySyncResult(SettingsNeedSync: false, PathWasUpdated: false)));
 
         var coordinator = new StartupCoordinator(store, profileManager, EmptyMonitorService(), startupReg);
         coordinator.Run();

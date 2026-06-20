@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using MonitorBrightnessController.Interfaces;
 using MonitorBrightnessController.Models;
@@ -41,14 +42,14 @@ public enum StartupAction
 public readonly record struct StartupDecision(StartupAction Action, string? ProfileName, string? Notice);
 
 /// <summary>
-/// Coordinates GUI startup behavior for auto-apply (Requirements 5.2, 5.3, 5.4, 5.6, 5.7)
-/// and startup registration reconciliation (Requirements 1.4, 2.4, 2.5, 2.6, 2.7, 2.8).
+/// Coordinates GUI startup behavior for auto-apply (Requirements 2.2, 2.3, 2.4, 2.5, 2.8, 2.9)
+/// and startup registration reconciliation (Requirements 1.4, 3.1–3.7, 7.1–7.5).
 /// </summary>
 /// <remarks>
 /// The decision of what to do at startup is a pure function of the loaded
 /// <see cref="AppSettings"/> and the set of stored profile names; see <see cref="Decide"/>.
 /// <see cref="Run"/> performs that decision against the injected services, applying the
-/// last-used profile when appropriate and returning any notice to surface in the GUI.
+/// startup profile when appropriate and returning any notice to surface in the GUI.
 /// Loading settings via <see cref="ISettingsStore.Load"/> already yields defaults when the
 /// file is missing or unreadable, satisfying Requirement 5.7.
 /// </remarks>
@@ -86,33 +87,38 @@ public sealed class StartupCoordinator
     /// Determines, without side effects, what the GUI should do at startup.
     /// </summary>
     /// <remarks>
-    /// The unified startup profile semantics (Requirements 6.6, 6.7, 6.10, 6.11):
+    /// The unified startup profile semantics (Requirements 2.2, 2.3, 2.4, 2.5, 2.8, 2.9):
     /// <list type="bullet">
-    ///   <item>When <c>AutoApplyOnStartup</c> is false → skip regardless of dropdown selection.</item>
-    ///   <item>When <c>DefaultStartupProfileName</c> is null ("Last Used" selected) and <c>AutoApplyOnStartup</c> is true:
-    ///     apply <c>LastAppliedProfileName</c> if it exists and refers to a valid profile;
-    ///     if <c>LastAppliedProfileName</c> is null → skip with no error (Requirement 6.10).</item>
-    ///   <item>When <c>DefaultStartupProfileName</c> is a specific name and <c>AutoApplyOnStartup</c> is true:
-    ///     apply that profile if it exists (Requirement 6.7);
-    ///     if it does not exist → skip, reset to "Last Used", persist (Requirement 6.11).</item>
+    ///   <item>When <c>isCliOverride</c> is true → return <see cref="StartupAction.CliOverride"/>
+    ///     regardless of all other settings (Requirement 2.9).</item>
+    ///   <item>When <c>AutoApplyOnStartup</c> is false → return <see cref="StartupAction.AutoApplyDisabled"/>
+    ///     regardless of dropdown selection (Requirement 2.4).</item>
+    ///   <item>When <c>AutoApplyOnStartup</c> is true and <c>DefaultStartupProfileName</c> is set and exists
+    ///     → return <see cref="StartupAction.ApplyDefaultProfile"/> (Requirement 2.2).</item>
+    ///   <item>When <c>AutoApplyOnStartup</c> is true and <c>DefaultStartupProfileName</c> is set but missing
+    ///     → return <see cref="StartupAction.DefaultProfileMissing"/> with notice (Requirement 2.8).</item>
+    ///   <item>When <c>AutoApplyOnStartup</c> is true and <c>DefaultStartupProfileName</c> is null ("Last Used"):
+    ///     apply <c>LastAppliedProfileName</c> if it exists (Requirement 2.3);
+    ///     if <c>LastAppliedProfileName</c> is null/empty → return <see cref="StartupAction.AutoApplyDisabled"/>
+    ///     with no error (Requirement 2.5).</item>
     /// </list>
     /// </remarks>
     /// <param name="settings">The loaded application settings.</param>
     /// <param name="existingProfileNames">The names of all currently stored profiles.</param>
-    /// <param name="isCliOverride">When true, CLI arguments are present and startup profile application is skipped (Requirement 2.5).</param>
+    /// <param name="isCliOverride">When true, CLI arguments are present and startup profile application is skipped (Requirement 2.9).</param>
     /// <returns>The startup decision describing the action and any notice to display.</returns>
     public static StartupDecision Decide(AppSettings settings, IReadOnlyList<string> existingProfileNames, bool isCliOverride = false)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(existingProfileNames);
 
-        // Requirement 2.5: CLI arguments override all startup profile application.
+        // Requirement 2.9: CLI arguments override all startup profile application.
         if (isCliOverride)
         {
             return new StartupDecision(StartupAction.CliOverride, null, null);
         }
 
-        // When auto-apply is disabled, read current values without changing them.
+        // Requirement 2.4: When auto-apply is disabled, read current values without changing them.
         if (!settings.AutoApplyOnStartup)
         {
             return new StartupDecision(StartupAction.AutoApplyDisabled, null, null);
@@ -120,7 +126,7 @@ public sealed class StartupCoordinator
 
         // --- AutoApplyOnStartup is true from here ---
 
-        // Requirement 6.7: A specific profile name is configured in the startup dropdown.
+        // Requirement 2.2: A specific DefaultStartupProfileName is configured.
         if (!string.IsNullOrEmpty(settings.DefaultStartupProfileName))
         {
             bool defaultProfileExists = existingProfileNames.Any(name =>
@@ -131,22 +137,22 @@ public sealed class StartupCoordinator
                 return new StartupDecision(StartupAction.ApplyDefaultProfile, settings.DefaultStartupProfileName, null);
             }
 
-            // Requirement 6.11: configured profile doesn't exist — skip, reset to "Last Used", persist.
+            // Requirement 2.8: configured default profile doesn't exist — skip, reset to "Last Used", persist.
             string missingNotice = $"Startup profile '{settings.DefaultStartupProfileName}' was not found. Resetting to \"Last Used\".";
             return new StartupDecision(StartupAction.DefaultProfileMissing, settings.DefaultStartupProfileName, missingNotice);
         }
 
-        // --- "Last Used" semantics: DefaultStartupProfileName is null ---
+        // --- "Last Used" semantics: DefaultStartupProfileName is null/empty ---
 
         string? lastProfile = settings.LastAppliedProfileName;
 
-        // Requirement 6.10: "Last Used" selected but LastAppliedProfileName is null → skip, no error.
+        // Requirement 2.5: Both names are null/empty → skip, no error.
         if (string.IsNullOrEmpty(lastProfile))
         {
             return new StartupDecision(StartupAction.AutoApplyDisabled, null, null);
         }
 
-        // Requirement 6.6: "Last Used" selected and LastAppliedProfileName refers to a valid profile → apply it.
+        // Requirement 2.3: Fall back to LastAppliedProfileName when it exists.
         bool lastProfileExists = existingProfileNames.Any(name =>
             string.Equals(name, lastProfile, StringComparison.OrdinalIgnoreCase));
 
@@ -155,7 +161,7 @@ public sealed class StartupCoordinator
             return new StartupDecision(StartupAction.ApplyLastProfile, lastProfile, null);
         }
 
-        // "Last Used" selected but LastAppliedProfileName refers to a deleted profile → skip, notify.
+        // LastAppliedProfileName refers to a deleted profile → skip, notify.
         string notice = $"Last applied profile '{lastProfile}' was not found.";
         return new StartupDecision(StartupAction.LastProfileMissing, lastProfile, notice);
     }
@@ -177,7 +183,7 @@ public sealed class StartupCoordinator
         // Loading already returns defaults for a missing/corrupt store (Requirement 5.7).
         AppSettings settings = _settingsStore.Load();
 
-        // Requirement 1.4: reconcile the registry entry when StartWithWindows is enabled.
+        // Requirement 7.2, 7.4: reconcile the registry entry when StartWithWindows is enabled.
         if (_startupRegistration != null)
         {
             _startupRegistration.EnsureRegistration(settings.StartWithWindows);
@@ -201,8 +207,10 @@ public sealed class StartupCoordinator
                     _settingsStore.Save(updatedSettings);
                     return null;
                 }
-                // Requirement 2.7: handle apply failure (e.g. disconnected monitors) gracefully — log and continue.
-                return $"Could not apply startup profile '{decision.ProfileName}': {defaultApplied.Error}";
+                // Requirement 2.6: log failure via Trace, return notice for GUI display.
+                string defaultFailNotice = $"Could not apply startup profile '{decision.ProfileName}': {defaultApplied.Error}";
+                Trace.TraceWarning($"Silent mode: {defaultFailNotice}");
+                return defaultFailNotice;
 
             case StartupAction.DefaultProfileMissing:
                 // Requirement 6.11: configured default profile doesn't exist — reset to "Last Used" and persist.
@@ -217,9 +225,14 @@ public sealed class StartupCoordinator
             case StartupAction.ApplyLastProfile:
                 // Requirement 5.3: apply the last-used profile to all mapped connected monitors.
                 Result<Unit> applied = _profileManager.ApplyProfile(decision.ProfileName!, _monitorService);
-                return applied.IsSuccess
-                    ? null
-                    : $"Could not apply profile '{decision.ProfileName}': {applied.Error}";
+                if (applied.IsSuccess)
+                {
+                    return null;
+                }
+                // Requirement 2.6: log failure via Trace, return notice for GUI display.
+                string lastFailNotice = $"Could not apply profile '{decision.ProfileName}': {applied.Error}";
+                Trace.TraceWarning($"Silent mode: {lastFailNotice}");
+                return lastFailNotice;
 
             case StartupAction.LastProfileMissing:
                 // Requirement 5.6: skip application, surface the notice; current values are read
