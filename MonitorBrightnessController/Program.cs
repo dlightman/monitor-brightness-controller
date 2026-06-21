@@ -144,14 +144,16 @@ internal static class Program
         var window = new MainWindow(monitorService, settingsStore, profileManager, updateChecker, skipAutoApply: skipAutoApply);
 
         // Requirement 2.7: Start with main window hidden, no taskbar entry.
-        window.Visibility = Visibility.Collapsed;
+        // We must NOT pass the window to app.Run() because WPF auto-shows the
+        // startup window. Instead, set ShutdownMode to explicit and run without a window.
+        app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         window.ShowInTaskbar = false;
 
         // Initialize the system tray immediately so the user sees the icon (Requirement 2.7).
         // The SystemTrayManager's double-click handler will restore the window when activated.
         var trayManager = new SystemTrayManager(window, saveState: null);
 
-        app.Run(window);
+        app.Run();
         return 0;
     }
 

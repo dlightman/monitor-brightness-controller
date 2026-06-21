@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-06-20
+
+### Fixed
+
+- **Installer "Start with Windows" not working on Windows 11** — the installer now writes the `StartupApproved\Run` registry entry to explicitly mark the auto-start item as enabled, preventing Windows from silently disabling it
+- **Installer desktop shortcut access denied error** — changed from `{commondesktop}` (all users, requires admin) to `{userdesktop}` (current user) to match `PrivilegesRequired=lowest`
+- **Silent mode shows window on auto-start** — `App.Run(window)` was causing WPF to show the window; switched to `App.Run()` with `ShutdownMode.OnExplicitShutdown` so the window stays hidden until the user interacts with the tray icon
+- **publish.ps1 strict-mode crash when ISCC.exe not on PATH** — fixed `Get-Command` fallback to avoid property access on null
+- **publish.ps1 not finding ISCC.exe in user-local install** — added `%LOCALAPPDATA%\Programs\Inno Setup 6\` to candidate paths
+- **Inno Setup script compilation errors** — fixed `WPARAM`/`LPARAM` types (not valid in Pascal Script) and removed unused `ResultCode` variable
+
 ## [1.5.0] - 2026-06-20
 
 ### Fixed
